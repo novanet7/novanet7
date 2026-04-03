@@ -33,24 +33,22 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
-// Session 30 hari dengan rolling aktif dan touch manual
 app.use(session({
-  secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: {
-    secure: false,
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    httpOnly: true,
-    sameSite: 'lax'
-  }
+secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
+resave: false,
+saveUninitialized: false,
+rolling: true,
+cookie: {
+secure: false,
+maxAge: 30 * 24 * 60 * 60 * 1000,
+httpOnly: true,
+sameSite: 'lax'
+}
 }));
 
-// Middleware touch untuk memastikan session tetap hidup
 app.use((req, res, next) => {
-  if (req.session && req.session.touch) req.session.touch();
-  next();
+if (req.session && req.session.touch) req.session.touch();
+next();
 });
 
 app.use(passport.initialize());
@@ -58,11 +56,11 @@ app.use(passport.session());
 app.use(flash());
 const csrfProtection = csrf({ cookie: true });
 app.use((req, res, next) => {
-  if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
-    return csrfProtection(req, res, next);
-  }
-  if (req.path.startsWith('/api/')) return next();
-  return csrfProtection(req, res, next);
+if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
+return csrfProtection(req, res, next);
+}
+if (req.path.startsWith('/api/')) return next();
+return csrfProtection(req, res, next);
 });
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -388,7 +386,7 @@ if (!imgRes.ok) throw new Error('Gagal download gambar');
 const buffer = await imgRes.buffer();
 const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 const ext = mimeType.split('/')[1] || 'jpg';
-const fileName = `avatar.${ext}`; // Nama file disamakan dengan upload manual
+const fileName = `avatar.${ext}`;
 return { buffer, mimeType, fileName };
 } catch (err) {
 console.error('Error fetching waifu image:', err);
@@ -402,7 +400,7 @@ const index = await getUsersIndex();
 const existingIds = new Set(index.map(u => u.id));
 let attempts = 0;
 while (attempts < 20) {
-const randomId = Math.floor(Math.random() * 9000) + 1000; // 1000-9999
+const randomId = Math.floor(Math.random() * 9000) + 1000;
 if (!existingIds.has(randomId)) return randomId;
 attempts++;
 }
@@ -438,8 +436,6 @@ index.push({ id: newId, email: newUser.email, name: newUser.name });
 await saveUsersIndex(index);
 return newUser;
 }
-
-// ================================================================
 async function updateUser(id, updatedFields) {
 const user = await findUserById(id);
 if (!user) throw new Error('User tidak ditemukan');
@@ -468,7 +464,7 @@ await deleteUserAvatar(id);
 }
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🖼️ UPLOAD AVATAR (simpan sebagai file, bukan URL publik)
+// 🖼️ UPLOAD AVATAR (simpan di folder avatars/{userId}/avatar.ext)
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
 if (!octokit) throw new Error('GitHub tidak tersedia');
