@@ -33,21 +33,24 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
+// Session 30 hari dengan rolling aktif dan touch manual
 app.use(session({
-secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
-resave: false,
-saveUninitialized: false,
-rolling: true,
-cookie: {
-secure: false,
-maxAge: 30 * 24 * 60 * 60 * 1000,
-httpOnly: true,
-sameSite: 'lax'
-}
+  secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    secure: false,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'lax'
+  }
 }));
+
+// Middleware touch untuk memastikan session tetap hidup
 app.use((req, res, next) => {
-if (req.session && req.session.touch) req.session.touch();
-next();
+  if (req.session && req.session.touch) req.session.touch();
+  next();
 });
 
 app.use(passport.initialize());
@@ -55,11 +58,11 @@ app.use(passport.session());
 app.use(flash());
 const csrfProtection = csrf({ cookie: true });
 app.use((req, res, next) => {
-if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
-return csrfProtection(req, res, next);
-}
-if (req.path.startsWith('/api/')) return next();
-return csrfProtection(req, res, next);
+  if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
+    return csrfProtection(req, res, next);
+  }
+  if (req.path.startsWith('/api/')) return next();
+  return csrfProtection(req, res, next);
 });
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
