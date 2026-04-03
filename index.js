@@ -13,15 +13,13 @@ const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const { Octokit } = require('@octokit/rest');
 const config = require('./setting.js');
-const jwt = require('jsonwebtoken'); // <-- TAMBAHAN
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const SITE_NAME = config.SITE_NAME || 'novanet';
 const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-// JWT Secret untuk session (fallback ke SESSION_SECRET)
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
 
 let GITHUB_TOKEN = null;
@@ -30,10 +28,7 @@ let GITHUB_BRANCH = 'main';
 let GITHUB_PATH = 'data';
 let octokit = null;
 let owner, repo;
-
-// ---------- GITHUB SESSION STORE DENGAN JWT ----------
-// Cache in-memory untuk mengurangi akses GitHub
-const sessionCache = new Map(); // key: sid, value: { session, expireAt }
+const sessionCache = new Map();
 
 class GitHubSessionStore extends session.Store {
   constructor(octokit, owner, repo, branch, sessionPath) {
@@ -42,7 +37,7 @@ class GitHubSessionStore extends session.Store {
     this.owner = owner;
     this.repo = repo;
     this.branch = branch;
-    this.sessionPath = sessionPath; // misal 'data/sessions'
+    this.sessionPath = sessionPath;
   }
 
   getFilePath(sid) {
