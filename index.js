@@ -1685,13 +1685,13 @@ app.get('/login', (req, res) => {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0}
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
-.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(3px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
+.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(8px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
 .login-box{
-background:rgba(15,19,32,0.5); /* lebih transparan */
-backdrop-filter:blur(3px); /* blur lebih tipis */
+background:rgba(15,19,32,0.5);
+backdrop-filter:blur(8px);
 border:1px solid #2a3a60;
 border-radius:24px;
 padding:40px;
@@ -1706,10 +1706,10 @@ margin:auto
 }
 @keyframes glow{0%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33}100%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 40px #5b8cff80}}
 .logo-login {
-width: 100px;  /* DIPERBESAR dari 70px menjadi 100px */
+width: 250px;
 height: auto;
 margin-bottom: 15px;
-border-radius: 12px;
+border-radius: 16px;
 transition: transform 0.2s;
 display: block;
 margin-left: auto;
@@ -1789,18 +1789,14 @@ errorDiv.style.display = 'block';
     })(req, res, next);
   });
 
-  // ==========================================================================
-  // ROUTE REGISTER (GET & POST) - DENGAN JEDA 5 DETIK
-  // ==========================================================================
-  app.get('/register', async (req, res) => {
-    if (req.isAuthenticated()) return res.redirect('/profile');
-    const error = req.flash('error')[0];
-    const clientIp = req.ip || req.connection.remoteAddress;
-    let rateLimitMessage = '';
-    if (await isRegisterBlocked(clientIp)) {
-      rateLimitMessage = '⚠️ Terlalu banyak percobaan. Coba lagi setelah 5 menit.';
-    }
-    const html = `
+// ==========================================================================
+// ROUTE REGISTER (GET) – DENGAN LOGO 200px & BLUR 8px
+// ==========================================================================
+app.get('/register', (req, res) => {
+  if (req.isAuthenticated()) return res.redirect('/profile');
+  const error = req.flash('error')[0];
+  const rateLimitMessage = req.flash('rateLimit')[0];
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1820,12 +1816,39 @@ errorDiv.style.display = 'block';
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:0}
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
-.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.8);backdrop-filter:blur(5px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
+.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(8px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
-.register-box{background:rgba(15,19,32,0.95);backdrop-filter:blur(10px);border:1px solid #2a3a60;border-radius:24px;padding:40px;width:100%;max-width:400px;box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33;text-align:center;animation:glow 3s infinite alternate;position:relative;z-index:1;margin:auto}
+.register-box{
+background:rgba(15,19,32,0.5);
+backdrop-filter:blur(8px);
+border:1px solid #2a3a60;
+border-radius:24px;
+padding:40px;
+width:100%;
+max-width:400px;
+box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33;
+text-align:center;
+animation:glow 3s infinite alternate;
+position:relative;
+z-index:1;
+margin:auto
+}
 @keyframes glow{0%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33}100%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 40px #5b8cff80}}
+.logo-register {
+width: 200px;
+height: auto;
+margin-bottom: 15px;
+border-radius: 20px;
+transition: transform 0.2s;
+display: block;
+margin-left: auto;
+margin-right: auto;
+}
+.logo-register:hover {
+transform: scale(1.05);
+}
 h2{font-family:'Orbitron',sans-serif;color:#5b8cff;margin-bottom:20px;font-size:28px;letter-spacing:2px;text-shadow:0 0 10px #5b8cff}
 .input-group{margin-bottom:20px;text-align:left}
 label{display:block;margin-bottom:8px;color:#8a9bb0;font-size:14px;font-weight:600}
@@ -1848,6 +1871,7 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 <body>
 <div class="back-home"><a href="/"><i class="fas fa-home"></i> Kembali ke Beranda</a></div>
 <div class="register-box">
+<img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="logo-register">
 <h2>📝 ${SITE_NAME}</h2>
 <div class="error" id="errorMessage" style="${error || rateLimitMessage ? '' : 'display:none;'}">${escapeHTML(error || rateLimitMessage)}</div>
 <form id="registerForm" action="/register" method="POST">
@@ -1931,9 +1955,9 @@ errorDiv.style.display = 'block';
 </script>
 </body>
 </html>
-`;
-    res.send(html);
-  });
+  `;
+  res.send(html);
+});
 
   // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
