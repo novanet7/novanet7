@@ -1738,7 +1738,6 @@ button:hover{transform:scale(1.02);box-shadow:0 0 20px #5b8cff}
 <div class="back-home"><a href="/"><i class="fas fa-home"></i> Kembali ke Beranda</a></div>
 <div class="login-box">
 <img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="logo-login">
-<h2>🔐 ${SITE_NAME}</h2>
 <div class="error" id="errorMessage" style="${error ? '' : 'display:none;'}">${error ? escapeHTML(error) : ''}</div>
 <form action="/login" method="POST">
 <input type="hidden" name="_csrf" value="${req.csrfToken()}">
@@ -1837,7 +1836,7 @@ margin:auto
 }
 @keyframes glow{0%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33}100%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 40px #5b8cff80}}
 .logo-register {
-width: 200px;
+width: 250px;
 height: auto;
 margin-bottom: 15px;
 border-radius: 20px;
@@ -1872,7 +1871,6 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 <div class="back-home"><a href="/"><i class="fas fa-home"></i> Kembali ke Beranda</a></div>
 <div class="register-box">
 <img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="logo-register">
-<h2>📝 ${SITE_NAME}</h2>
 <div class="error" id="errorMessage" style="${error || rateLimitMessage ? '' : 'display:none;'}">${escapeHTML(error || rateLimitMessage)}</div>
 <form id="registerForm" action="/register" method="POST">
 <input type="hidden" name="_csrf" value="${req.csrfToken()}">
