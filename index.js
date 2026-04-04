@@ -3591,26 +3591,26 @@ alert('Terjadi kesalahan, coba lagi nanti.');
     res.send(html);
   });
 
-  // ==========================================================================
-  // HALAMAN UTAMA (HOME)
-  // ==========================================================================
-  app.get('/', async (req, res) => {
-    const isLoggedIn = req.isAuthenticated();
-    const user = isLoggedIn ? req.user : null;
-    const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
-    const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
-    const users = await getUsers();
-    const orders = await getOrders();
-    const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
-    let totalPurchases = 0;
-    if (user) {
-      totalPurchases = orders
-        .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-        .reduce((sum, o) => sum + o.amount, 0);
-    }
-    const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
-    const telegramUsername = (config.DEVELOPER || '').replace('@', '');
-    const html = `
+// ==========================================================================
+// HALAMAN UTAMA (HOME) – DENGAN LOGO DI HEADER
+// ==========================================================================
+app.get('/', async (req, res) => {
+  const isLoggedIn = req.isAuthenticated();
+  const user = isLoggedIn ? req.user : null;
+  const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
+  const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
+  const users = await getUsers();
+  const orders = await getOrders();
+  const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
+  let totalPurchases = 0;
+  if (user) {
+    totalPurchases = orders
+      .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
+      .reduce((sum, o) => sum + o.amount, 0);
+  }
+  const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
+  const telegramUsername = (config.DEVELOPER || '').replace('@', '');
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -3661,6 +3661,20 @@ position: sticky; top: 0; width: 100%; height: 55px;
 background: rgba(10, 12, 20, 0.95); backdrop-filter: blur(10px);
 display: flex; align-items: center; justify-content: space-between;
 padding: 0 20px; z-index: 100; border-bottom: 1px solid #1f2a40;
+}
+.logo-container {
+display: flex;
+align-items: center;
+gap: 12px;
+}
+.header-logo {
+height: 38px;
+width: auto;
+border-radius: 8px;
+transition: transform 0.2s;
+}
+.header-logo:hover {
+transform: scale(1.05);
 }
 .header-title {
 font-family: 'Orbitron'; font-size: 20px; color: #5b8cff; letter-spacing: 1px;
@@ -4109,13 +4123,25 @@ top: 50px;
 width: 30px;
 height: 30px;
 }
+.header-logo {
+height: 30px;
+}
+.header-title {
+font-size: 16px;
+}
+.logo-container {
+gap: 6px;
+}
 }
 </style>
 </head>
 <body>
 <canvas id="bgCanvas"></canvas>
 <div class="custom-header">
+<div class="logo-container">
+<img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="header-logo">
 <a href="/" class="header-title">${SITE_NAME} CPANEL</a>
+</div>
 <div class="header-right">
 <button class="info-btn" id="infoBtn"><i class="fas fa-info-circle"></i></button>
 <button class="support-btn" id="supportBtn"><i class="fas fa-headset"></i></button>
@@ -4404,8 +4430,8 @@ generatePriceCards();
 </body>
 </html>
 `;
-    res.send(html);
-  });
+  res.send(html);
+});
 
   // ==========================================================================
   // 404 HANDLER
