@@ -1,3 +1,7 @@
+// ============================================================================
+// SERVER.JS - NOVANET CPANEL STORE (FULL DENGAN PERBAIKAN FOTO PROFIL RANDOM)
+// ============================================================================
+
 const express = require('express');
 const fetch = require('node-fetch');
 const bodyParser = require('body-parser');
@@ -492,7 +496,7 @@ async function fetchRandomAvatarFromWaifu() {
     if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error('Gagal download gambar');
-    // PERBAIKAN: gunakan arrayBuffer lalu konversi ke Buffer
+    // PERBAIKAN: gunakan arrayBuffer lalu konversi ke Buffer (node-fetch v2)
     const arrayBuffer = await imgRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
@@ -969,9 +973,6 @@ ${pages.map(page => `  <url>
     res.send(sitemap);
   });
 
-  // ==========================================================================
-  // ROBOTS.TXT
-  // ==========================================================================
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     res.send(`# Robot rules for ${SITE_NAME}
@@ -1019,9 +1020,6 @@ Crawl-delay: 1
     }
   });
 
-  // ==========================================================================
-  // API CHECK PAYMENT
-  // ==========================================================================
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
     try {
       const { orderId, amount } = req.params;
@@ -1036,9 +1034,6 @@ Crawl-delay: 1
     }
   });
 
-  // ==========================================================================
-  // API CREATE PANEL
-  // ==========================================================================
   app.post('/api/create-panel', async (req, res) => {
     try {
       const { order_id } = req.body;
@@ -1082,7 +1077,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // PAYMENT CALLBACK (HTML PANJANG, SAMA PERSIS DENGAN ASLI)
+  // PAYMENT CALLBACK (HTML LENGKAP)
   // ==========================================================================
   app.get('/payment-callback', async (req, res) => {
     const { order_id, amount } = req.query;
@@ -1144,7 +1139,6 @@ Crawl-delay: 1
           });
           await updateUser(user.id, { purchasedPanels: purchased });
         }
-        // Notifikasi Telegram (sama seperti asli)
         const now = new Date();
         const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
         const dayName = formatterDay.format(now);
@@ -1178,7 +1172,6 @@ Crawl-delay: 1
       const updatedOrder = await findOrderById(order_id);
       const panel = updatedOrder.panel_data;
       const user = updatedOrder.user_data;
-      // Kirim HTML sukses (sama persis seperti asli, terlalu panjang tapi saya sertakan secara utuh)
       res.send(`
 <!DOCTYPE html>
 <html lang="id">
@@ -1190,43 +1183,263 @@ Crawl-delay: 1
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);color:#fff;font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;position:relative;}
-body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;background-size:cover;opacity:0.2;z-index:-2;}
-body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:-1;}
-.container{max-width:650px;width:100%;background:rgba(15,25,45,0.6);backdrop-filter:blur(12px);border-radius:32px;padding:35px;border:1px solid rgba(91,140,255,0.4);box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);animation:fadeInUp 0.5s ease;}
-@keyframes fadeInUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:15px;font-size:32px;text-align:center;}
-.success-icon{text-align:center;font-size:70px;margin-bottom:10px;animation:pulse 1.5s infinite;}
-@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.05);opacity:0.8}}
-.panel-card{background:rgba(0,0,0,0.5);border-radius:24px;padding:20px;margin:25px 0;backdrop-filter:blur(4px);border:1px solid rgba(91,140,255,0.3);}
-.detail-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+body{
+background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+color:#fff;
+font-family:'Rajdhani',sans-serif;
+min-height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+padding:20px;
+position:relative;
+}
+body::before{
+content:'';
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
+background-size:cover;
+opacity:0.2;
+z-index:-2;
+}
+body::after{
+content:'';
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.65);
+z-index:-1;
+}
+.container{
+max-width:650px;
+width:100%;
+background:rgba(15,25,45,0.6);
+backdrop-filter:blur(12px);
+border-radius:32px;
+padding:35px;
+border:1px solid rgba(91,140,255,0.4);
+box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
+animation:fadeInUp 0.5s ease;
+}
+@keyframes fadeInUp{
+from{opacity:0;transform:translateY(30px)}
+to{opacity:1;transform:translateY(0)}
+}
+h1{
+font-family:'Orbitron';
+background:linear-gradient(135deg,#fff,#5b8cff);
+-webkit-background-clip:text;
+background-clip:text;
+color:transparent;
+margin-bottom:15px;
+font-size:32px;
+text-align:center;
+}
+.success-icon{
+text-align:center;
+font-size:70px;
+margin-bottom:10px;
+animation:pulse 1.5s infinite;
+}
+@keyframes pulse{
+0%,100%{transform:scale(1);opacity:1}
+50%{transform:scale(1.05);opacity:0.8}
+}
+.panel-card{
+background:rgba(0,0,0,0.5);
+border-radius:24px;
+padding:20px;
+margin:25px 0;
+backdrop-filter:blur(4px);
+border:1px solid rgba(91,140,255,0.3);
+}
+.detail-row{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:12px 0;
+border-bottom:1px solid rgba(255,255,255,0.1);
+}
 .detail-row:last-child{border-bottom:none}
-.detail-label{color:#8a9bb0;font-size:14px;font-weight:600;}
-.detail-value{font-family:'JetBrains Mono',monospace;font-size:14px;word-break:break-word;text-align:right;display:flex;align-items:center;gap:8px;}
-.copy-btn{background:#2a3a60;border:none;color:#fff;padding:4px 12px;border-radius:30px;cursor:pointer;font-size:11px;transition:0.2s;}
-.copy-btn:hover{background:#5b8cff;color:#000;transform:scale(1.02);}
-.btn-group{display:flex;gap:15px;justify-content:center;margin-top:25px;flex-wrap:wrap;}
-.btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:12px 25px;border-radius:50px;text-decoration:none;font-weight:bold;transition:0.2s;}
-.btn:hover{transform:scale(1.02);box-shadow:0 0 20px rgba(91,140,255,0.5);}
-.refund-btn{background:linear-gradient(90deg,#d32f2f,#f44336);}
-.refund-btn:hover{box-shadow:0 0 20px #f44336;}
-.back-link{display:block;text-align:center;margin-top:20px;color:#8a9bb0;text-decoration:none;}
+.detail-label{
+color:#8a9bb0;
+font-size:14px;
+font-weight:600;
+}
+.detail-value{
+font-family:'JetBrains Mono',monospace;
+font-size:14px;
+word-break:break-word;
+text-align:right;
+display:flex;
+align-items:center;
+gap:8px;
+}
+.copy-btn{
+background:#2a3a60;
+border:none;
+color:#fff;
+padding:4px 12px;
+border-radius:30px;
+cursor:pointer;
+font-size:11px;
+transition:0.2s;
+}
+.copy-btn:hover{
+background:#5b8cff;
+color:#000;
+transform:scale(1.02);
+}
+.btn-group{
+display:flex;
+gap:15px;
+justify-content:center;
+margin-top:25px;
+flex-wrap:wrap;
+}
+.btn{
+display:inline-flex;
+align-items:center;
+gap:8px;
+background:linear-gradient(90deg,#1e3c72,#2a5298);
+color:#fff;
+padding:12px 25px;
+border-radius:50px;
+text-decoration:none;
+font-weight:bold;
+transition:0.2s;
+}
+.btn:hover{
+transform:scale(1.02);
+box-shadow:0 0 20px rgba(91,140,255,0.5);
+}
+.refund-btn{
+background:linear-gradient(90deg,#d32f2f,#f44336);
+}
+.refund-btn:hover{
+box-shadow:0 0 20px #f44336;
+}
+.back-link{
+display:block;
+text-align:center;
+margin-top:20px;
+color:#8a9bb0;
+text-decoration:none;
+}
 .back-link:hover{color:#5b8cff}
-.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:2000;align-items:center;justify-content:center;}
-.modal-content{background:#0b0f19;padding:30px;border-radius:28px;max-width:450px;width:90%;text-align:center;border:2px solid #5b8cff;box-shadow:0 0 40px rgba(91,140,255,0.4);animation:fadeInUp 0.3s;}
-.modal h2{font-family:'Orbitron';color:#5b8cff;margin-bottom:20px;font-size:1.5rem;}
-.modal-input-group{margin-bottom:20px;text-align:left;}
-.modal-input-group label{display:block;margin-bottom:6px;color:#8a9bb0;font-size:13px;}
-.modal-input-group input,.modal-input-group textarea{width:100%;padding:10px 15px;border-radius:30px;border:1px solid #1f2a40;background:#1a1f30;color:#fff;font-size:14px;}
-.modal-input-group textarea{min-height:80px;resize:vertical;}
-.warning-text{color:#ffaa00;font-size:12px;margin-top:-8px;margin-bottom:15px;}
-.modal-buttons{display:flex;gap:12px;margin-top:20px;}
-.modal-btn{flex:1;padding:12px;border-radius:40px;border:none;font-weight:bold;cursor:pointer;transition:0.2s;}
-.modal-btn.cancel{background:#2a3a60;color:#fff;}
-.modal-btn.confirm{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;}
-.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:#2a3a60;border-radius:40px;padding:8px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;z-index:3000;opacity:0;transition:all 0.3s;pointer-events:none;}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-@media(max-width:550px){.container{padding:20px}h1{font-size:24px}.detail-row{flex-direction:column;align-items:flex-start;gap:5px}.detail-value{text-align:left}}
+.modal{
+display:none;
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.85);
+backdrop-filter:blur(8px);
+z-index:2000;
+align-items:center;
+justify-content:center;
+}
+.modal-content{
+background:#0b0f19;
+padding:30px;
+border-radius:28px;
+max-width:450px;
+width:90%;
+text-align:center;
+border:2px solid #5b8cff;
+box-shadow:0 0 40px rgba(91,140,255,0.4);
+animation:fadeInUp 0.3s;
+}
+.modal h2{
+font-family:'Orbitron';
+color:#5b8cff;
+margin-bottom:20px;
+font-size:1.5rem;
+}
+.modal-input-group{
+margin-bottom:20px;
+text-align:left;
+}
+.modal-input-group label{
+display:block;
+margin-bottom:6px;
+color:#8a9bb0;
+font-size:13px;
+}
+.modal-input-group input,.modal-input-group textarea{
+width:100%;
+padding:10px 15px;
+border-radius:30px;
+border:1px solid #1f2a40;
+background:#1a1f30;
+color:#fff;
+font-size:14px;
+}
+.modal-input-group textarea{
+min-height:80px;
+resize:vertical;
+}
+.warning-text{
+color:#ffaa00;
+font-size:12px;
+margin-top:-8px;
+margin-bottom:15px;
+}
+.modal-buttons{
+display:flex;
+gap:12px;
+margin-top:20px;
+}
+.modal-btn{
+flex:1;
+padding:12px;
+border-radius:40px;
+border:none;
+font-weight:bold;
+cursor:pointer;
+transition:0.2s;
+}
+.modal-btn.cancel{
+background:#2a3a60;
+color:#fff;
+}
+.modal-btn.confirm{
+background:linear-gradient(90deg,#1e3c72,#2a5298);
+color:#fff;
+}
+.toast{
+position:fixed;
+bottom:90px;
+left:50%;
+transform:translateX(-50%) translateY(20px);
+background:#2a3a60;
+border-radius:40px;
+padding:8px 18px;
+font-family:'JetBrains Mono',monospace;
+font-size:12px;
+color:#fff;
+z-index:3000;
+opacity:0;
+transition:all 0.3s;
+pointer-events:none;
+}
+.toast.show{
+opacity:1;
+transform:translateX(-50%) translateY(0);
+}
+@media(max-width:550px){
+.container{padding:20px}
+h1{font-size:24px}
+.detail-row{flex-direction:column;align-items:flex-start;gap:5px}
+.detail-value{text-align:left}
+}
 </style>
 </head>
 <body>
@@ -1411,9 +1624,9 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // get login
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ROUTE LOGIN (GET & POST)
+  // ==========================================================================
   app.get('/login', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
     const error = req.flash('error')[0];
@@ -1512,9 +1725,9 @@ errorDiv.style.display = 'block';
     })(req, res, next);
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🎨 ROUTE REGISTER (GET) dengan rate limit
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ROUTE REGISTER (GET & POST)
+  // ==========================================================================
   app.get('/register', async (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
     const error = req.flash('error')[0];
@@ -1658,9 +1871,6 @@ errorDiv.style.display = 'block';
     res.send(html);
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 📝 ROUTE REGISTER (POST) dengan rate limit
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
 
@@ -1710,9 +1920,9 @@ errorDiv.style.display = 'block';
     req.logout((err) => { if (err) console.error(err); res.redirect('/'); });
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🔑 GOOGLE OAUTH ROUTES
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // GOOGLE OAUTH ROUTES
+  // ==========================================================================
   app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
   app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/login', failureFlash: true }),
@@ -1721,9 +1931,9 @@ errorDiv.style.display = 'block';
     }
   );
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🎨 ROUTE PROFIL (dengan daftar panel yang dibeli) - ID ditampilkan
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ROUTE PROFILE (GET & POST)
+  // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
     const photoUrl = user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 200);
@@ -2485,7 +2695,6 @@ if (orderId) openRefundModal(orderId);
     res.send(html);
   });
 
-  // ========== MODIFIKASI: HAPUS FOTO LAMA SEBELUM UPLOAD BARU (tanpa random button) ==========
   app.post('/profile', isAuthenticated, upload.single('photo'), async (req, res) => {
     const { name, bio } = req.body;
     if (!name) return res.status(400).json({ error: 'Nama tidak boleh kosong' });
@@ -2507,9 +2716,9 @@ if (orderId) openRefundModal(orderId);
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🗑️ HAPUS AKUN
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // DELETE ACCOUNT
+  // ==========================================================================
   app.get('/delete-account', isAuthenticated, async (req, res) => {
     const csrfToken = req.csrfToken();
     const html = `
@@ -2595,9 +2804,9 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🎨 ADMIN DASHBOARD (dengan manajemen refund request)
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ADMIN DASHBOARD
+  // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
     const activeOrders = await getOrders();
@@ -3339,6 +3548,9 @@ alert('Terjadi kesalahan, coba lagi nanti.');
     res.send(html);
   });
 
+  // ==========================================================================
+  // HALAMAN UTAMA (HOME)
+  // ==========================================================================
   app.get('/', async (req, res) => {
     const isLoggedIn = req.isAuthenticated();
     const user = isLoggedIn ? req.user : null;
@@ -4152,9 +4364,9 @@ generatePriceCards();
     res.send(html);
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🚫 404 HANDLER
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // 404 HANDLER
+  // ==========================================================================
   app.use((req, res) => {
     res.status(404).send(`
 <!DOCTYPE html>
@@ -4186,9 +4398,9 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
   });
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚀 AUTO-CANCEL EXPIRED ORDERS (2 menit)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// AUTO CANCEL EXPIRED ORDERS (2 menit)
+// ============================================================================
 async function autoCancelExpiredOrders() {
   try {
     const orders = await getOrders();
@@ -4218,9 +4430,9 @@ async function autoCancelExpiredOrders() {
 }
 setInterval(autoCancelExpiredOrders, 30000);
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚀 INISIALISASI GITHUB DARI URL
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// INISIALISASI GITHUB DARI URL
+// ============================================================================
 async function initGithub() {
   const tokenConfig = config.GITHUB_TOKEN;
   if (!tokenConfig) {
@@ -4248,17 +4460,13 @@ async function initGithub() {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚀 START SERVER (dengan inisialisasi GitHub dan pemasangan session store)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// START SERVER
+// ============================================================================
 async function startServer() {
   try {
     await initGithub();
-
-    // Buat session store setelah octokit siap
     sessionStore = new GitHubSessionStore(octokit, owner, repo, GITHUB_BRANCH, `${GITHUB_PATH}/sessions`);
-
-    // Pasang session middleware dengan store custom
     app.use(session({
       secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
       store: sessionStore,
@@ -4272,14 +4480,10 @@ async function startServer() {
         sameSite: 'lax'
       }
     }));
-
-    // Middleware untuk touch session (opsional, store sudah handle)
     app.use((req, res, next) => {
       if (req.session && req.session.touch) req.session.touch();
       next();
     });
-
-    // Pasang passport, flash, csrf (seperti sebelumnya)
     app.use(passport.initialize());
     app.use(passport.session());
     app.use(flash());
@@ -4291,8 +4495,6 @@ async function startServer() {
       if (req.path.startsWith('/api/')) return next();
       return csrfProtection(req, res, next);
     });
-
-    // Konfigurasi Google OAuth jika tersedia
     if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
       const GoogleStrategy = require('passport-google-oauth20').Strategy;
       passport.use(new GoogleStrategy({
@@ -4332,11 +4534,7 @@ async function startServer() {
     } else {
       console.warn('⚠️ Kredensial Google tidak ditemukan di GitHub JSON, login dengan Google tidak tersedia');
     }
-
-    // Pasang semua route
     setupRoutes(app);
-
-    // Jalankan server
     app.listen(PORT, HOST, () => {
       console.log(` \x1b[1m\x1b[34m         ⢀⣷⡀\x1b[0m
 \x1b[1m\x1b[34m⠀⠀⠀⠀⠀ ⣴⠆⠀⠹⣿⣿⣿⠇\x1b[0m  ⣶⣄
@@ -4361,7 +4559,7 @@ async function startServer() {
 \x1b[1m\x1b[32m─────────────────────────────────────────────────────\x1b[0m
 🌐 Server: http://${HOST}:${PORT}
 📦 subdo: ${config.URL}
-👤 Developer: ${config.DEVELOPER}
+?? Developer: ${config.DEVELOPER}
 ✅ Server ready! Data tersimpan di GitHub: ${GITHUB_REPO}/${GITHUB_PATH}
 `);
     });
