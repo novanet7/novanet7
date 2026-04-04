@@ -1,7 +1,3 @@
-// ============================================================================
-// SERVER.JS - NOVANET CPANEL STORE (FULL DENGAN PERBAIKAN FOTO PROFIL RANDOM)
-// ============================================================================
-
 const express = require('express');
 const fetch = require('node-fetch');
 const bodyParser = require('body-parser');
@@ -485,7 +481,7 @@ async function findUserById(id) {
 }
 
 // ============================================================================
-// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS (DIPERBAIKI)
+// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS (TANPA FALLBACK)
 // ============================================================================
 async function fetchRandomAvatarFromWaifu() {
   try {
@@ -496,7 +492,7 @@ async function fetchRandomAvatarFromWaifu() {
     if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error('Gagal download gambar');
-    // PERBAIKAN: gunakan arrayBuffer lalu konversi ke Buffer (node-fetch v2)
+    // Gunakan arrayBuffer lalu konversi ke Buffer
     const arrayBuffer = await imgRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
@@ -526,19 +522,26 @@ async function generateUniqueRandomId() {
   }
   throw new Error('Tidak ada ID yang tersedia (1000-9999 penuh)');
 }
+
+// ============================================================================
+// CREATE USER (DENGAN PASTIKAN UPLOAD FOTO SELESAI)
+// ============================================================================
 async function createUser(userData) {
   const newId = await generateUniqueRandomId();
   let photoPath = userData.photo || '';
+  
   if (!photoPath) {
     try {
       const { buffer, mimeType, fileName } = await fetchRandomAvatarFromWaifu();
       const tempUser = { id: newId };
       photoPath = await uploadAvatarToGitHub(tempUser, buffer, fileName, mimeType);
+      console.log(`✅ Avatar random berhasil diupload untuk user ${newId}: ${photoPath}`);
     } catch (err) {
       console.error('Gagal upload foto random anime untuk user baru:', err);
       photoPath = '';
     }
   }
+  
   const newUser = {
     id: newId,
     ...userData,
@@ -547,12 +550,25 @@ async function createUser(userData) {
     pterodactylUserId: null,
     photo: photoPath
   };
+  
   await writeUserFile(newId, newUser);
+  console.log(`✅ Data user ${newId} berhasil disimpan ke GitHub`);
+  
   const index = await getUsersIndex();
   index.push({ id: newId, email: newUser.email, name: newUser.name });
   await saveUsersIndex(index);
+  
+  // Verifikasi data user
+  const verifyUser = await readUserFile(newId);
+  if (!verifyUser || verifyUser.photo !== photoPath) {
+    console.error(`⚠️ Verifikasi gagal untuk user ${newId}`);
+  } else {
+    console.log(`✅ Verifikasi user ${newId} OK, photo: ${verifyUser.photo}`);
+  }
+  
   return newUser;
 }
+
 async function updateUser(id, updatedFields) {
   const user = await findUserById(id);
   if (!user) throw new Error('User tidak ditemukan');
@@ -581,7 +597,7 @@ async function deleteUserById(id) {
 }
 
 // ============================================================================
-// UPLOAD AVATAR (SIMPAN DI FOLDER avatars/{userId}/avatar.ext)
+// UPLOAD AVATAR KE GITHUB (DENGAN VERIFIKASI)
 // ============================================================================
 async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
   if (!octokit) throw new Error('GitHub tidak tersedia');
@@ -591,6 +607,7 @@ async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
   }
   const ext = fileName.split('.').pop().toLowerCase();
   const avatarPath = `avatars/${user.id}/avatar.${ext}`;
+  
   await octokit.repos.createOrUpdateFileContents({
     owner,
     repo,
@@ -599,6 +616,22 @@ async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
     content: fileBuffer.toString('base64'),
     branch: GITHUB_BRANCH
   });
+  
+  // Verifikasi apakah file benar-benar ada
+  try {
+    const { data } = await octokit.repos.getContent({
+      owner, repo, path: avatarPath, ref: GITHUB_BRANCH
+    });
+    if (data && data.content) {
+      console.log(`✅ Verifikasi avatar untuk user ${user.id} berhasil: ${avatarPath}`);
+    } else {
+      console.warn(`⚠️ Verifikasi avatar gagal untuk user ${user.id}`);
+    }
+  } catch (err) {
+    console.error(`❌ Verifikasi avatar error: ${err.message}`);
+    throw new Error('Gagal verifikasi upload avatar');
+  }
+  
   return avatarPath;
 }
 async function deleteUserAvatar(userId) {
@@ -946,9 +979,12 @@ function getGravatarUrl(email, size = 200) {
 }
 
 // ============================================================================
-// ROUTE SITEMAP.XML
+// SETUP ROUTES (SEMUA ROUTE DENGAN HTML LENGKAP)
 // ============================================================================
 function setupRoutes(app) {
+  // ==========================================================================
+  // SITEMAP.XML & ROBOTS.TXT
+  // ==========================================================================
   app.get('/sitemap.xml', async (req, res) => {
     const now = new Date().toISOString().split('T')[0];
     const pages = [
@@ -985,7 +1021,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // API CREATE ORDER
+  // API ROUTES
   // ==========================================================================
   app.post('/api/create-order', isAuthenticated, async (req, res) => {
     try {
@@ -1594,7 +1630,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // ROUTE AVATAR (DIPERBAIKI: KONVERSI ID KE INTEGER)
+  // ROUTE AVATAR (DIPERBAIKI)
   // ==========================================================================
   app.get('/api/avatar/:userId', isAuthenticated, async (req, res) => {
     const { userId } = req.params;
@@ -1726,7 +1762,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // ROUTE REGISTER (GET & POST)
+  // ROUTE REGISTER (GET & POST) - DENGAN JEDA 5 DETIK
   // ==========================================================================
   app.get('/register', async (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
@@ -1871,6 +1907,7 @@ errorDiv.style.display = 'block';
     res.send(html);
   });
 
+  // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
 
@@ -1905,8 +1942,14 @@ errorDiv.style.display = 'block';
         return res.redirect('/register');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
+      // Proses createUser (termasuk upload foto) - sudah menunggu selesai
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
+      
+      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
+      console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
       req.flash('success', 'Registrasi berhasil, silakan login');
       res.redirect('/login');
     } catch (err) {
@@ -1932,7 +1975,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST)
+  // ROUTE PROFILE (GET & POST) - LENGKAP
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -4399,34 +4442,22 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS (2 menit)
+// AUTO CANCEL EXPIRED ORDERS
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
     const orders = await getOrders();
     const now = Date.now();
-    const toCancel = [];
-    for (const order of orders) {
-      if (order.status === 'pending') {
-        const created = new Date(order.created_at).getTime();
-        if (now - created > 120 * 1000) {
-          toCancel.push(order);
-        }
-      }
-    }
-    if (toCancel.length > 0) {
+    const toCancel = orders.filter(o => o.status === 'pending' && (now - new Date(o.created_at).getTime() > 120000));
+    if (toCancel.length) {
       const newActive = orders.filter(o => !toCancel.some(c => c.order_id === o.order_id));
       await saveOrders(newActive);
       const cancelled = await getCancelledOrders();
-      toCancel.forEach(order => {
-        cancelled.push({ ...order, status: 'cancel', cancelled_at: new Date().toISOString() });
-      });
+      toCancel.forEach(order => { cancelled.push({ ...order, status: 'cancel', cancelled_at: new Date().toISOString() }); });
       await saveCancelledOrders(cancelled);
       console.log(`✅ ${toCancel.length} order dibatalkan karena melebihi 2 menit`);
     }
-  } catch (err) {
-    console.error('Error in autoCancelExpiredOrders:', err);
-  }
+  } catch (err) { console.error('Auto cancel error:', err); }
 }
 setInterval(autoCancelExpiredOrders, 30000);
 
@@ -4435,9 +4466,7 @@ setInterval(autoCancelExpiredOrders, 30000);
 // ============================================================================
 async function initGithub() {
   const tokenConfig = config.GITHUB_TOKEN;
-  if (!tokenConfig) {
-    throw new Error('GITHUB_TOKEN tidak dikonfigurasi.');
-  }
+  if (!tokenConfig) throw new Error('GITHUB_TOKEN tidak dikonfigurasi.');
   if (tokenConfig.startsWith('http://') || tokenConfig.startsWith('https://')) {
     const response = await fetch(tokenConfig);
     const data = await response.json();
@@ -4447,17 +4476,13 @@ async function initGithub() {
     GITHUB_PATH = data.github_path || 'data';
     if (data.google_client_id) config.GOOGLE_CLIENT_ID = data.google_client_id;
     if (data.google_client_secret) config.GOOGLE_CLIENT_SECRET = data.google_client_secret;
-    if (!GITHUB_TOKEN || !GITHUB_REPO) {
-      throw new Error('Token atau repo tidak ditemukan dalam response JSON');
-    }
+    if (!GITHUB_TOKEN || !GITHUB_REPO) throw new Error('Token atau repo tidak ditemukan dalam response JSON');
   } else {
     throw new Error('GITHUB_TOKEN harus berupa URL JSON.');
   }
-  if (GITHUB_TOKEN) {
-    octokit = new Octokit({ auth: GITHUB_TOKEN });
-    [owner, repo] = GITHUB_REPO.split('/');
-    console.log(`GitHub siap: owner=${owner}, repo=${repo}, branch=${GITHUB_BRANCH}, path=${GITHUB_PATH}`);
-  }
+  octokit = new Octokit({ auth: GITHUB_TOKEN });
+  [owner, repo] = GITHUB_REPO.split('/');
+  console.log(`GitHub siap: owner=${owner}, repo=${repo}, branch=${GITHUB_BRANCH}, path=${GITHUB_PATH}`);
 }
 
 // ============================================================================
@@ -4473,17 +4498,9 @@ async function startServer() {
       resave: false,
       saveUninitialized: false,
       rolling: true,
-      cookie: {
-        secure: false,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        httpOnly: true,
-        sameSite: 'lax'
-      }
+      cookie: { secure: false, maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' }
     }));
-    app.use((req, res, next) => {
-      if (req.session && req.session.touch) req.session.touch();
-      next();
-    });
+    app.use((req, res, next) => { if (req.session && req.session.touch) req.session.touch(); next(); });
     app.use(passport.initialize());
     app.use(passport.session());
     app.use(flash());
@@ -4496,43 +4513,25 @@ async function startServer() {
       return csrfProtection(req, res, next);
     });
     if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
-      const GoogleStrategy = require('passport-google-oauth20').Strategy;
       passport.use(new GoogleStrategy({
         clientID: config.GOOGLE_CLIENT_ID,
         clientSecret: config.GOOGLE_CLIENT_SECRET,
         callbackURL: `${config.URL}/auth/google/callback`,
         passReqToCallback: true
-      },
-      async (req, accessToken, refreshToken, profile, done) => {
+      }, async (req, accessToken, refreshToken, profile, done) => {
         try {
           const email = profile._json.email;
           let user = await findUserByEmail(email);
           if (!user) {
-            const newUser = {
-              email: email,
-              name: profile.displayName || email.split('@')[0],
-              password: null,
-              bio: '',
-              photo: '',
-              googleId: profile.id,
-              createdAt: new Date().toISOString(),
-              purchasedPanels: [],
-              pterodactylUserId: null
-            };
+            const newUser = { email, name: profile.displayName || email.split('@')[0], password: null, bio: '', photo: '', googleId: profile.id, createdAt: new Date().toISOString(), purchasedPanels: [], pterodactylUserId: null };
             user = await createUser(newUser);
-          } else {
-            if (!user.googleId) {
-              user.googleId = profile.id;
-              await updateUser(user.id, { googleId: profile.id });
-            }
+          } else if (!user.googleId) {
+            user.googleId = profile.id;
+            await updateUser(user.id, { googleId: profile.id });
           }
           return done(null, user);
-        } catch (err) {
-          return done(err, null);
-        }
+        } catch (err) { return done(err, null); }
       }));
-    } else {
-      console.warn('⚠️ Kredensial Google tidak ditemukan di GitHub JSON, login dengan Google tidak tersedia');
     }
     setupRoutes(app);
     app.listen(PORT, HOST, () => {
