@@ -3592,7 +3592,7 @@ alert('Terjadi kesalahan, coba lagi nanti.');
   });
 
 // ==========================================================================
-// HALAMAN UTAMA (HOME) – DENGAN LOGO DI HEADER
+// HALAMAN UTAMA (HOME) – LOGO DIPERBESAR
 // ==========================================================================
 app.get('/', async (req, res) => {
   const isLoggedIn = req.isAuthenticated();
@@ -3668,9 +3668,9 @@ align-items: center;
 gap: 12px;
 }
 .header-logo {
-height: 38px;
+height: 48px;   /* DIPERBESAR dari 38px menjadi 48px */
 width: auto;
-border-radius: 8px;
+border-radius: 10px;
 transition: transform 0.2s;
 }
 .header-logo:hover {
@@ -4124,7 +4124,7 @@ width: 30px;
 height: 30px;
 }
 .header-logo {
-height: 30px;
+height: 38px;   /* ukuran logo di mobile tetap proporsional */
 }
 .header-title {
 font-size: 16px;
