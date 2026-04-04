@@ -3642,7 +3642,7 @@ alert('Terjadi kesalahan, coba lagi nanti.');
   });
 
 // ==========================================================================
-// HALAMAN UTAMA (HOME) – BACKGROUND GAMBAR PADA SETIAP KARTU HARGA
+// HALAMAN UTAMA (HOME) – SLIDE-IN ANIMATION UNTUK KARTU HARGA
 // ==========================================================================
 app.get('/', async (req, res) => {
   const isLoggedIn = req.isAuthenticated();
@@ -4015,15 +4015,39 @@ body {
   border-radius: 20px;
   padding: 20px;
   overflow: hidden;
-  transition: all 0.3s ease;
   text-align: center;
   box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-  animation: float 3s ease-in-out infinite;
+  opacity: 0; /* mulai transparan */
+  transform: translateX(0);
+  animation: slideIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
-@keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-  100% { transform: translateY(0px); }
+/* Kartu ganjil (index 0,2,4...) masuk dari kiri */
+.price-card:nth-child(odd) {
+  animation-name: slideInLeft;
+}
+/* Kartu genap (index 1,3,5...) masuk dari kanan */
+.price-card:nth-child(even) {
+  animation-name: slideInRight;
+}
+@keyframes slideInLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(-80px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(80px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .price-card::before {
   content: '';
@@ -4041,10 +4065,10 @@ body {
   z-index: 1;
 }
 .price-card:hover {
-  transform: translateY(-10px) scale(1.02);
+  transform: translateY(-5px) scale(1.02);
   border-color: #5b8cff;
   box-shadow: 0 15px 35px rgba(91,140,255,0.4);
-  animation: none;
+  transition: all 0.3s ease;
 }
 .panel-type {
   font-family: 'Orbitron';
