@@ -449,10 +449,9 @@ async function clearRegisterAttempts(ip) {
 // 📦 MANAJEMEN USER PER FILE
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const USERS_INDEX_PATH = `${GITHUB_PATH}/users_index.json`.replace(/\/+/g, '/');
-
 async function getUsersIndex() {
-  const { content } = await readGitHubFile(USERS_INDEX_PATH);
-  return content || [];
+const { content } = await readGitHubFile(USERS_INDEX_PATH);
+return content || [];
 }
 async function saveUsersIndex(index) {
   await writeGitHubFileWithRetry(USERS_INDEX_PATH, index);
@@ -502,143 +501,144 @@ async function findUserById(id) {
 
 // ========== FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS ==========
 async function fetchRandomAvatarFromWaifu() {
-  try {
-    const response = await fetch('https://api.waifu.pics/sfw/waifu');
-    if (!response.ok) throw new Error('Gagal mengambil gambar dari waifu.pics');
-    const data = await response.json();
-    const imageUrl = data.url;
-    if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error('Gagal download gambar');
-    const buffer = await imgRes.buffer();
-    const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
-    const ext = mimeType.split('/')[1] || 'jpg';
-    const fileName = `avatar.${ext}`;
-    return { buffer, mimeType, fileName };
-  } catch (err) {
-    console.error('Error fetching waifu image:', err);
-    throw new Error('Gagal mengambil avatar random anime dari waifu.pics');
-  }
+try {
+const response = await fetch('https://api.waifu.pics/sfw/waifu');
+if (!response.ok) throw new Error('Gagal mengambil gambar dari waifu.pics');
+const data = await response.json();
+const imageUrl = data.url;
+if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
+const imgRes = await fetch(imageUrl);
+if (!imgRes.ok) throw new Error('Gagal download gambar');
+const buffer = await imgRes.buffer();
+const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+const ext = mimeType.split('/')[1] || 'jpg';
+const fileName = `avatar.${ext}`;
+return { buffer, mimeType, fileName };
+} catch (err) {
+console.error('Error fetching waifu image:', err);
+throw new Error('Gagal mengambil avatar random anime dari waifu.pics');
+}
 }
 
 // ========== ID RANDOM 4 DIGIT (1000-9999) & UNIK ==========
 async function generateUniqueRandomId() {
-  const index = await getUsersIndex();
-  const existingIds = new Set(index.map(u => u.id));
-  let attempts = 0;
-  while (attempts < 20) {
-    const randomId = Math.floor(Math.random() * 9000) + 1000;
-    if (!existingIds.has(randomId)) return randomId;
-    attempts++;
-  }
-  for (let i = 1000; i <= 9999; i++) {
-    if (!existingIds.has(i)) return i;
-  }
-  throw new Error('Tidak ada ID yang tersedia (1000-9999 penuh)');
+const index = await getUsersIndex();
+const existingIds = new Set(index.map(u => u.id));
+let attempts = 0;
+while (attempts < 20) {
+const randomId = Math.floor(Math.random() * 9000) + 1000;
+if (!existingIds.has(randomId)) return randomId;
+attempts++;
+}
+for (let i = 1000; i <= 9999; i++) {
+if (!existingIds.has(i)) return i;
+}
+throw new Error('Tidak ada ID yang tersedia (1000-9999 penuh)');
 }
 async function createUser(userData) {
-  const newId = await generateUniqueRandomId();
-  let photoPath = userData.photo || '';
-  if (!photoPath) {
-    try {
-      const { buffer, mimeType, fileName } = await fetchRandomAvatarFromWaifu();
-      const tempUser = { id: newId };
-      photoPath = await uploadAvatarToGitHub(tempUser, buffer, fileName, mimeType);
-    } catch (err) {
-      console.error('Gagal upload foto random anime untuk user baru:', err);
-      photoPath = '';
-    }
-  }
-  const newUser = {
-    id: newId,
-    ...userData,
-    createdAt: new Date().toISOString(),
-    purchasedPanels: [],
-    pterodactylUserId: null,
-    photo: photoPath
-  };
-  await writeUserFile(newId, newUser);
-  const index = await getUsersIndex();
-  index.push({ id: newId, email: newUser.email, name: newUser.name });
-  await saveUsersIndex(index);
-  return newUser;
+const newId = await generateUniqueRandomId();
+let photoPath = userData.photo || '';
+if (!photoPath) {
+try {
+const { buffer, mimeType, fileName } = await fetchRandomAvatarFromWaifu();
+const tempUser = { id: newId };
+photoPath = await uploadAvatarToGitHub(tempUser, buffer, fileName, mimeType);
+} catch (err) {
+console.error('Gagal upload foto random anime untuk user baru:', err);
+photoPath = '';
+}
+}
+const newUser = {
+id: newId,
+...userData,
+createdAt: new Date().toISOString(),
+purchasedPanels: [],
+pterodactylUserId: null,
+photo: photoPath
+};
+await writeUserFile(newId, newUser);
+const index = await getUsersIndex();
+index.push({ id: newId, email: newUser.email, name: newUser.name });
+await saveUsersIndex(index);
+return newUser;
 }
 async function updateUser(id, updatedFields) {
-  const user = await findUserById(id);
-  if (!user) throw new Error('User tidak ditemukan');
-  const updatedUser = { ...user, ...updatedFields };
-  await writeUserFile(id, updatedUser);
-  if (updatedFields.name || updatedFields.email) {
-    const index = await getUsersIndex();
-    const idx = index.findIndex(u => u.id === id);
-    if (idx !== -1) {
-      if (updatedFields.name) index[idx].name = updatedFields.name;
-      if (updatedFields.email) index[idx].email = updatedFields.email;
-      await saveUsersIndex(index);
-    }
-  }
-  return updatedUser;
+const user = await findUserById(id);
+if (!user) throw new Error('User tidak ditemukan');
+const updatedUser = { ...user, ...updatedFields };
+await writeUserFile(id, updatedUser);
+if (updatedFields.name || updatedFields.email) {
+const index = await getUsersIndex();
+const idx = index.findIndex(u => u.id === id);
+if (idx !== -1) {
+if (updatedFields.name) index[idx].name = updatedFields.name;
+if (updatedFields.email) index[idx].email = updatedFields.email;
+await saveUsersIndex(index);
+}
+}
+return updatedUser;
 }
 async function deleteUserById(id) {
-  const user = await findUserById(id);
-  if (!user) throw new Error('User tidak ditemukan');
-  await deleteOrdersByEmail(user.email);
-  await deleteUserFile(id);
-  const index = await getUsersIndex();
-  const newIndex = index.filter(u => u.id !== id);
-  await saveUsersIndex(newIndex);
-  await deleteUserAvatar(id);
+const user = await findUserById(id);
+if (!user) throw new Error('User tidak ditemukan');
+await deleteOrdersByEmail(user.email);
+await deleteUserFile(id);
+const index = await getUsersIndex();
+const newIndex = index.filter(u => u.id !== id);
+await saveUsersIndex(newIndex);
+await deleteUserAvatar(id);
 }
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🖼️ UPLOAD AVATAR (simpan di folder avatars/{userId}/avatar.ext)
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
-  if (!octokit) throw new Error('GitHub tidak tersedia');
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
-  if (!allowedTypes.includes(mimeType)) {
-    throw new Error('Format file tidak didukung. Gunakan jpg, jpeg, png, gif, webp, atau bmp.');
-  }
-  const ext = fileName.split('.').pop().toLowerCase();
-  const avatarPath = `avatars/${user.id}/avatar.${ext}`;
-  await octokit.repos.createOrUpdateFileContents({
-    owner,
-    repo,
-    path: avatarPath,
-    message: `Upload avatar for user ${user.id}`,
-    content: fileBuffer.toString('base64'),
-    branch: GITHUB_BRANCH
-  });
-  return avatarPath;
+if (!octokit) throw new Error('GitHub tidak tersedia');
+const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+if (!allowedTypes.includes(mimeType)) {
+throw new Error('Format file tidak didukung. Gunakan jpg, jpeg, png, gif, webp, atau bmp.');
+}
+const ext = fileName.split('.').pop().toLowerCase();
+const avatarPath = `avatars/${user.id}/avatar.${ext}`;
+await octokit.repos.createOrUpdateFileContents({
+owner,
+repo,
+path: avatarPath,
+message: `Upload avatar for user ${user.id}`,
+content: fileBuffer.toString('base64'),
+branch: GITHUB_BRANCH
+});
+return avatarPath;
 }
 async function deleteUserAvatar(userId) {
-  if (!octokit) return;
-  const folder = `avatars/${userId}`;
-  try {
-    const { data: files } = await octokit.repos.getContent({
-      owner,
-      repo,
-      path: folder,
-      ref: GITHUB_BRANCH
-    }).catch(() => ({ data: null }));
-    if (files && Array.isArray(files)) {
-      for (const file of files) {
-        if (file.type === 'file') {
-          await octokit.repos.deleteFile({
-            owner,
-            repo,
-            path: file.path,
-            message: `Delete avatar for user ${userId}`,
-            sha: file.sha,
-            branch: GITHUB_BRANCH
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`Gagal hapus avatar user ${userId}:`, err);
-  }
+if (!octokit) return;
+const folder = `avatars/${userId}`;
+try {
+const { data: files } = await octokit.repos.getContent({
+owner,
+repo,
+path: folder,
+ref: GITHUB_BRANCH
+}).catch(() => ({ data: null }));
+if (files && Array.isArray(files)) {
+for (const file of files) {
+if (file.type === 'file') {
+await octokit.repos.deleteFile({
+owner,
+repo,
+path: file.path,
+message: `Delete avatar for user ${userId}`,
+sha: file.sha,
+branch: GITHUB_BRANCH
+});
 }
+}
+}
+} catch (err) {
+console.error(`Gagal hapus avatar user ${userId}:`, err);
+}
+}
+
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 🧑 PASSPORT CONFIGURATION
