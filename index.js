@@ -1661,7 +1661,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
 // ==========================================================================
-// ROUTE LOGIN (GET & POST) – DENGAN LOGO & LEBIH TRANSPARAN
+// ROUTE LOGIN (GET & POST) – LOGO DIPERBESAR, BLUR LEBIH TIPIS
 // ==========================================================================
 app.get('/login', (req, res) => {
   if (req.isAuthenticated()) return res.redirect('/profile');
@@ -1685,13 +1685,13 @@ app.get('/login', (req, res) => {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:0} /* overlay lebih terang agar background lebih terlihat */
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
-.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.6);backdrop-filter:blur(5px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
+.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(3px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
 .login-box{
-background:rgba(15,19,32,0.65); /* lebih transparan dari 0.95 */
-backdrop-filter:blur(5px); /* blur dikurangi agar background kelihatan */
+background:rgba(15,19,32,0.5); /* lebih transparan */
+backdrop-filter:blur(3px); /* blur lebih tipis */
 border:1px solid #2a3a60;
 border-radius:24px;
 padding:40px;
@@ -1706,11 +1706,14 @@ margin:auto
 }
 @keyframes glow{0%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33}100%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 40px #5b8cff80}}
 .logo-login {
-width: 70px;
+width: 100px;  /* DIPERBESAR dari 70px menjadi 100px */
 height: auto;
 margin-bottom: 15px;
 border-radius: 12px;
 transition: transform 0.2s;
+display: block;
+margin-left: auto;
+margin-right: auto;
 }
 .logo-login:hover {
 transform: scale(1.05);
