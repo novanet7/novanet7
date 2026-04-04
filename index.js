@@ -3642,7 +3642,7 @@ alert('Terjadi kesalahan, coba lagi nanti.');
   });
 
 // ==========================================================================
-// HALAMAN UTAMA (HOME) – SLIDE-IN ANIMATION UNTUK KARTU HARGA
+// HALAMAN UTAMA (HOME) – BACKGROUND VIDEO, SLIDE-IN ANIMATION
 // ==========================================================================
 app.get('/', async (req, res) => {
   const isLoggedIn = req.isAuthenticated();
@@ -3697,12 +3697,25 @@ body {
   position: relative;
   overflow-x: hidden;
 }
-#bgCanvas {
+/* Video Background */
+#bgVideo {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
   z-index: -1;
   pointer-events: none;
 }
@@ -4017,15 +4030,13 @@ body {
   overflow: hidden;
   text-align: center;
   box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-  opacity: 0; /* mulai transparan */
+  opacity: 0;
   transform: translateX(0);
   animation: slideIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
-/* Kartu ganjil (index 0,2,4...) masuk dari kiri */
 .price-card:nth-child(odd) {
   animation-name: slideInLeft;
 }
-/* Kartu genap (index 1,3,5...) masuk dari kanan */
 .price-card:nth-child(even) {
   animation-name: slideInRight;
 }
@@ -4246,7 +4257,7 @@ body {
 </style>
 </head>
 <body>
-<canvas id="bgCanvas"></canvas>
+<video id="bgVideo" src="https://files.catbox.moe/3yo7nw.mp4" autoplay muted loop playsinline></video>
 <div class="custom-header">
 <div class="logo-container">
 <img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="header-logo">
@@ -4363,17 +4374,7 @@ ${isLoggedIn ? `
 </div>
 <script>
 const isLoggedIn = ${isLoggedIn};
-const canvas = document.getElementById('bgCanvas');
-const ctx = canvas.getContext('2d');
-let width = window.innerWidth, height = window.innerHeight;
-function resizeCanvas(){ width=window.innerWidth; height=window.innerHeight; canvas.width=width; canvas.height=height; }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-class Particle{constructor(x,y,size,speedX,speedY,color){this.x=x;this.y=y;this.size=size;this.speedX=speedX;this.speedY=speedY;this.color=color}update(){this.x+=this.speedX;this.y+=this.speedY;if(this.x>width)this.x=0;if(this.x<0)this.x=width;if(this.y>height)this.y=0;if(this.y<0)this.y=height}draw(ctx){ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,Math.PI*2);ctx.fillStyle=this.color;ctx.fill()}}
-let particles=[]; const PARTICLE_COUNT=80; const COLORS=['#5b8cff','#3a6df0','#1a4a9f','#5b8cffaa','#3a6df0aa','#7b9cff'];
-function initParticles(){particles=[];for(let i=0;i<PARTICLE_COUNT;i++){let size=Math.random()*5+1.5;let x=Math.random()*width;let y=Math.random()*height;let speedX=(Math.random()-0.5)*0.35;let speedY=(Math.random()-0.5)*0.2;let color=COLORS[Math.floor(Math.random()*COLORS.length)];particles.push(new Particle(x,y,size,speedX,speedY,color))}}
-function animate(){ctx.clearRect(0,0,width,height);ctx.fillStyle='#03050a';ctx.fillRect(0,0,width,height);let gradient=ctx.createLinearGradient(0,0,width,height);gradient.addColorStop(0,'rgba(3,5,10,0.5)');gradient.addColorStop(1,'rgba(3,5,10,0.8)');ctx.fillStyle=gradient;ctx.fillRect(0,0,width,height);particles.forEach(p=>{p.update();p.draw(ctx)});ctx.beginPath();ctx.strokeStyle='rgba(91,140,255,0.2)';ctx.lineWidth=0.8;for(let i=0;i<particles.length;i++){for(let j=i+1;j<particles.length;j++){let dx=particles[i].x-particles[j].x;let dy=particles[i].y-particles[j].y;let dist=Math.sqrt(dx*dx+dy*dy);if(dist<120){ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.stroke()}}}requestAnimationFrame(animate)}
-initParticles(); animate();
+// Tidak ada lagi partikel canvas, background video sudah ada
 const menuBtn = document.getElementById('menuBtn');
 const statusPanel = document.getElementById('statusPanel');
 const pageContainer = document.getElementById('pageContainer');
