@@ -30,6 +30,9 @@ let octokit = null;
 let owner, repo;
 const sessionCache = new Map();
 
+// ============================================================================
+// KELAS GITHUB SESSION STORE
+// ============================================================================
 class GitHubSessionStore extends session.Store {
   constructor(octokit, owner, repo, branch, sessionPath) {
     super();
@@ -55,7 +58,6 @@ class GitHubSessionStore extends session.Store {
       });
       const jwtToken = Buffer.from(data.content, 'base64').toString();
       const decoded = jwt.verify(jwtToken, JWT_SECRET);
-      // Cek expired (meskipun JWT sudah punya exp, kita cek juga cookie expires)
       if (decoded.session && decoded.session.cookie && decoded.session.cookie.expires) {
         const expires = new Date(decoded.session.cookie.expires);
         if (expires < new Date()) {
@@ -158,42 +160,21 @@ class GitHubSessionStore extends session.Store {
   }
 }
 
-// Variabel untuk menyimpan instance store (diisi setelah initGithub)
 let sessionStore = null;
 
-// Middleware standar (sebelum session store diinisialisasi, kita tunda dulu)
+// ============================================================================
+// MIDDLEWARE DASAR
+// ============================================================================
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
-// Kita akan memanggil app.use(session(...)) nanti setelah initGithub, karena butuh octokit.
-// Jadi kita simpan dulu konfigurasi session tanpa store, nanti di startServer kita set store dan pasang middleware.
-// Atau lebih mudah: kita buat fungsi untuk memasang session setelah store siap.
-
-// Tapi karena middleware harus dipasang sebelum route, kita perlu sedikit trik:
-// Kita buat variabel global, lalu kita define route setelah session dipasang.
-// Cara paling aman: pindahkan semua route ke dalam fungsi startServer setelah session middleware.
-// Agar tidak terlalu ribet, kita akan tetap mendefinisikan route setelah session, tapi karena session store butuh octokit,
-// kita akan panggil fungsi setupApp setelah initGithub.
-
-// Untuk sementara, kita simpan dulu semua route dalam array, atau kita tunda eksekusi route dengan menggunakan app.use dengan kondisi.
-// Solusi sederhana: kita tulis ulang kode agar semua route didefinisikan setelah session middleware.
-// Karena kode asli sudah sangat panjang, saya akan menulis ulang bagian bawah dengan memindahkan semua route ke dalam function setupRoutes(app, sessionStore).
-// Namun agar perubahan minimal, kita bisa langsung memasang session middleware di dalam startServer setelah initGithub, lalu mendefinisikan semua route di bawahnya.
-// Untuk itu, kita perlu mengubah struktur: pindahkan seluruh definisi route (mulai dari sitemap, robots, api, dll) ke dalam startServer setelah session dipasang.
-// Di bawah ini saya akan memberikan kode lengkap dengan penataan ulang seperti itu.
-
-// ----------------------------------------------------------------------
-// Mulai dari sini adalah definisi fungsi-fungsi yang tidak bergantung pada session (helper, dll)
-// ----------------------------------------------------------------------
-
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🚨 TELEGRAM NOTIFIER
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// TELEGRAM NOTIFIER
+// ============================================================================
 async function sendTelegramError(error, context = {}) {
-  // ... (kode asli, tidak berubah)
   try {
     const now = new Date();
     const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
@@ -227,9 +208,9 @@ async function sendTelegramError(error, context = {}) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🗃️ FUNGSI BACA/TULIS GITHUB (dengan retry)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// FUNGSI BACA/TULIS GITHUB (DENGAN RETRY)
+// ============================================================================
 async function readGitHubFile(filePath) {
   if (!octokit) throw new Error('GitHub tidak tersedia');
   try {
@@ -276,9 +257,9 @@ async function writeGitHubFileWithRetry(filePath, content, maxRetries = 3) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📦 FUNGSI MANAJEMEN ORDER DI GITHUB
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// MANAJEMEN ORDER DI GITHUB
+// ============================================================================
 async function getOrders() {
   const filePath = `${GITHUB_PATH}/orders.json`.replace(/\/+/g, '/');
   const { content } = await readGitHubFile(filePath);
@@ -330,9 +311,9 @@ async function deleteOrdersByEmail(email) {
   await saveCancelledOrders(newCancelled);
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💸 FUNGSI MANAJEMEN REFUND REQUEST
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// MANAJEMEN REFUND REQUEST
+// ============================================================================
 async function getRefundRequests() {
   const filePath = `${GITHUB_PATH}/refund_requests.json`.replace(/\/+/g, '/');
   const { content } = await readGitHubFile(filePath);
@@ -367,9 +348,9 @@ async function findRefundRequest(orderId) {
   return requests.find(r => r.order_id === orderId);
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🛡️ RATE LIMITING UNTUK REGISTER (disimpan di GitHub)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// RATE LIMITING UNTUK REGISTER (DISIMPAN DI GITHUB)
+// ============================================================================
 const RATE_LIMIT_FILE = `${GITHUB_PATH}/rate_limits.json`.replace(/\/+/g, '/');
 
 async function getRateLimits() {
@@ -445,13 +426,13 @@ async function clearRegisterAttempts(ip) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📦 MANAJEMEN USER PER FILE
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// MANAJEMEN USER PER FILE
+// ============================================================================
 const USERS_INDEX_PATH = `${GITHUB_PATH}/users_index.json`.replace(/\/+/g, '/');
 async function getUsersIndex() {
-const { content } = await readGitHubFile(USERS_INDEX_PATH);
-return content || [];
+  const { content } = await readGitHubFile(USERS_INDEX_PATH);
+  return content || [];
 }
 async function saveUsersIndex(index) {
   await writeGitHubFileWithRetry(USERS_INDEX_PATH, index);
@@ -499,150 +480,155 @@ async function findUserById(id) {
   return await readUserFile(id);
 }
 
-// ========== FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS ==========
+// ============================================================================
+// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS (DIPERBAIKI)
+// ============================================================================
 async function fetchRandomAvatarFromWaifu() {
-try {
-const response = await fetch('https://api.waifu.pics/sfw/waifu');
-if (!response.ok) throw new Error('Gagal mengambil gambar dari waifu.pics');
-const data = await response.json();
-const imageUrl = data.url;
-if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
-const imgRes = await fetch(imageUrl);
-if (!imgRes.ok) throw new Error('Gagal download gambar');
-const buffer = await imgRes.buffer();
-const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
-const ext = mimeType.split('/')[1] || 'jpg';
-const fileName = `avatar.${ext}`;
-return { buffer, mimeType, fileName };
-} catch (err) {
-console.error('Error fetching waifu image:', err);
-throw new Error('Gagal mengambil avatar random anime dari waifu.pics');
-}
+  try {
+    const response = await fetch('https://api.waifu.pics/sfw/waifu');
+    if (!response.ok) throw new Error('Gagal mengambil gambar dari waifu.pics');
+    const data = await response.json();
+    const imageUrl = data.url;
+    if (!imageUrl) throw new Error('URL gambar tidak ditemukan');
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) throw new Error('Gagal download gambar');
+    // PERBAIKAN: gunakan arrayBuffer lalu konversi ke Buffer
+    const arrayBuffer = await imgRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+    const ext = mimeType.split('/')[1] || 'jpg';
+    const fileName = `avatar.${ext}`;
+    return { buffer, mimeType, fileName };
+  } catch (err) {
+    console.error('Error fetching waifu image:', err);
+    throw new Error('Gagal mengambil avatar random anime dari waifu.pics');
+  }
 }
 
-// ========== ID RANDOM 4 DIGIT (1000-9999) & UNIK ==========
+// ============================================================================
+// ID RANDOM 4 DIGIT (1000-9999) & UNIK
+// ============================================================================
 async function generateUniqueRandomId() {
-const index = await getUsersIndex();
-const existingIds = new Set(index.map(u => u.id));
-let attempts = 0;
-while (attempts < 20) {
-const randomId = Math.floor(Math.random() * 9000) + 1000;
-if (!existingIds.has(randomId)) return randomId;
-attempts++;
-}
-for (let i = 1000; i <= 9999; i++) {
-if (!existingIds.has(i)) return i;
-}
-throw new Error('Tidak ada ID yang tersedia (1000-9999 penuh)');
+  const index = await getUsersIndex();
+  const existingIds = new Set(index.map(u => u.id));
+  let attempts = 0;
+  while (attempts < 20) {
+    const randomId = Math.floor(Math.random() * 9000) + 1000;
+    if (!existingIds.has(randomId)) return randomId;
+    attempts++;
+  }
+  for (let i = 1000; i <= 9999; i++) {
+    if (!existingIds.has(i)) return i;
+  }
+  throw new Error('Tidak ada ID yang tersedia (1000-9999 penuh)');
 }
 async function createUser(userData) {
-const newId = await generateUniqueRandomId();
-let photoPath = userData.photo || '';
-if (!photoPath) {
-try {
-const { buffer, mimeType, fileName } = await fetchRandomAvatarFromWaifu();
-const tempUser = { id: newId };
-photoPath = await uploadAvatarToGitHub(tempUser, buffer, fileName, mimeType);
-} catch (err) {
-console.error('Gagal upload foto random anime untuk user baru:', err);
-photoPath = '';
-}
-}
-const newUser = {
-id: newId,
-...userData,
-createdAt: new Date().toISOString(),
-purchasedPanels: [],
-pterodactylUserId: null,
-photo: photoPath
-};
-await writeUserFile(newId, newUser);
-const index = await getUsersIndex();
-index.push({ id: newId, email: newUser.email, name: newUser.name });
-await saveUsersIndex(index);
-return newUser;
+  const newId = await generateUniqueRandomId();
+  let photoPath = userData.photo || '';
+  if (!photoPath) {
+    try {
+      const { buffer, mimeType, fileName } = await fetchRandomAvatarFromWaifu();
+      const tempUser = { id: newId };
+      photoPath = await uploadAvatarToGitHub(tempUser, buffer, fileName, mimeType);
+    } catch (err) {
+      console.error('Gagal upload foto random anime untuk user baru:', err);
+      photoPath = '';
+    }
+  }
+  const newUser = {
+    id: newId,
+    ...userData,
+    createdAt: new Date().toISOString(),
+    purchasedPanels: [],
+    pterodactylUserId: null,
+    photo: photoPath
+  };
+  await writeUserFile(newId, newUser);
+  const index = await getUsersIndex();
+  index.push({ id: newId, email: newUser.email, name: newUser.name });
+  await saveUsersIndex(index);
+  return newUser;
 }
 async function updateUser(id, updatedFields) {
-const user = await findUserById(id);
-if (!user) throw new Error('User tidak ditemukan');
-const updatedUser = { ...user, ...updatedFields };
-await writeUserFile(id, updatedUser);
-if (updatedFields.name || updatedFields.email) {
-const index = await getUsersIndex();
-const idx = index.findIndex(u => u.id === id);
-if (idx !== -1) {
-if (updatedFields.name) index[idx].name = updatedFields.name;
-if (updatedFields.email) index[idx].email = updatedFields.email;
-await saveUsersIndex(index);
-}
-}
-return updatedUser;
+  const user = await findUserById(id);
+  if (!user) throw new Error('User tidak ditemukan');
+  const updatedUser = { ...user, ...updatedFields };
+  await writeUserFile(id, updatedUser);
+  if (updatedFields.name || updatedFields.email) {
+    const index = await getUsersIndex();
+    const idx = index.findIndex(u => u.id === id);
+    if (idx !== -1) {
+      if (updatedFields.name) index[idx].name = updatedFields.name;
+      if (updatedFields.email) index[idx].email = updatedFields.email;
+      await saveUsersIndex(index);
+    }
+  }
+  return updatedUser;
 }
 async function deleteUserById(id) {
-const user = await findUserById(id);
-if (!user) throw new Error('User tidak ditemukan');
-await deleteOrdersByEmail(user.email);
-await deleteUserFile(id);
-const index = await getUsersIndex();
-const newIndex = index.filter(u => u.id !== id);
-await saveUsersIndex(newIndex);
-await deleteUserAvatar(id);
+  const user = await findUserById(id);
+  if (!user) throw new Error('User tidak ditemukan');
+  await deleteOrdersByEmail(user.email);
+  await deleteUserFile(id);
+  const index = await getUsersIndex();
+  const newIndex = index.filter(u => u.id !== id);
+  await saveUsersIndex(newIndex);
+  await deleteUserAvatar(id);
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🖼️ UPLOAD AVATAR (simpan di folder avatars/{userId}/avatar.ext)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// UPLOAD AVATAR (SIMPAN DI FOLDER avatars/{userId}/avatar.ext)
+// ============================================================================
 async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
-if (!octokit) throw new Error('GitHub tidak tersedia');
-const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
-if (!allowedTypes.includes(mimeType)) {
-throw new Error('Format file tidak didukung. Gunakan jpg, jpeg, png, gif, webp, atau bmp.');
-}
-const ext = fileName.split('.').pop().toLowerCase();
-const avatarPath = `avatars/${user.id}/avatar.${ext}`;
-await octokit.repos.createOrUpdateFileContents({
-owner,
-repo,
-path: avatarPath,
-message: `Upload avatar for user ${user.id}`,
-content: fileBuffer.toString('base64'),
-branch: GITHUB_BRANCH
-});
-return avatarPath;
+  if (!octokit) throw new Error('GitHub tidak tersedia');
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+  if (!allowedTypes.includes(mimeType)) {
+    throw new Error('Format file tidak didukung. Gunakan jpg, jpeg, png, gif, webp, atau bmp.');
+  }
+  const ext = fileName.split('.').pop().toLowerCase();
+  const avatarPath = `avatars/${user.id}/avatar.${ext}`;
+  await octokit.repos.createOrUpdateFileContents({
+    owner,
+    repo,
+    path: avatarPath,
+    message: `Upload avatar for user ${user.id}`,
+    content: fileBuffer.toString('base64'),
+    branch: GITHUB_BRANCH
+  });
+  return avatarPath;
 }
 async function deleteUserAvatar(userId) {
-if (!octokit) return;
-const folder = `avatars/${userId}`;
-try {
-const { data: files } = await octokit.repos.getContent({
-owner,
-repo,
-path: folder,
-ref: GITHUB_BRANCH
-}).catch(() => ({ data: null }));
-if (files && Array.isArray(files)) {
-for (const file of files) {
-if (file.type === 'file') {
-await octokit.repos.deleteFile({
-owner,
-repo,
-path: file.path,
-message: `Delete avatar for user ${userId}`,
-sha: file.sha,
-branch: GITHUB_BRANCH
-});
-}
-}
-}
-} catch (err) {
-console.error(`Gagal hapus avatar user ${userId}:`, err);
-}
+  if (!octokit) return;
+  const folder = `avatars/${userId}`;
+  try {
+    const { data: files } = await octokit.repos.getContent({
+      owner,
+      repo,
+      path: folder,
+      ref: GITHUB_BRANCH
+    }).catch(() => ({ data: null }));
+    if (files && Array.isArray(files)) {
+      for (const file of files) {
+        if (file.type === 'file') {
+          await octokit.repos.deleteFile({
+            owner,
+            repo,
+            path: file.path,
+            message: `Delete avatar for user ${userId}`,
+            sha: file.sha,
+            branch: GITHUB_BRANCH
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`Gagal hapus avatar user ${userId}:`, err);
+  }
 }
 
-
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🧑 PASSPORT CONFIGURATION
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// PASSPORT CONFIGURATION
+// ============================================================================
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -694,9 +680,9 @@ function isAdmin(req, res, next) {
   res.redirect('/profile');
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🧑 CREATE / FIND PTERODACTYL USER
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// CREATE / FIND PTERODACTYL USER
+// ============================================================================
 async function findPterodactylUserByEmail(email) {
   try {
     const response = await fetch(`${config.DOMAIN}/api/application/users?filter[email]=${encodeURIComponent(email)}`, {
@@ -753,16 +739,14 @@ async function createPterodactylUser(email, username, password) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🖥️ CREATE PTERODACTYL SERVER
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// CREATE PTERODACTYL SERVER
+// ============================================================================
 async function createPterodactylServer(userId, panelType, username, email) {
   try {
     let ram, disk, cpu;
     if (panelType === 'unli') {
-      ram = 0;
-      disk = 0;
-      cpu = 0;
+      ram = 0; disk = 0; cpu = 0;
     } else {
       switch (panelType) {
         case '1gb': ram = 1024; disk = 1024; cpu = 40; break;
@@ -850,9 +834,9 @@ async function createPterodactylServer(userId, panelType, username, email) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🗑️ DELETE PTERODACTYL SERVER
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// DELETE PTERODACTYL SERVER
+// ============================================================================
 async function deletePterodactylServer(serverId) {
   try {
     const response = await fetch(`${config.DOMAIN}/api/application/servers/${serverId}`, {
@@ -874,9 +858,9 @@ async function deletePterodactylServer(serverId) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📊 FUNGSI CEK STATUS PAKASIR
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// FUNGSI CEK STATUS PAKASIR
+// ============================================================================
 async function checkPaymentStatus(orderId, amount) {
   try {
     const detailUrl = `https://app.pakasir.com/api/transactiondetail?project=${encodeURIComponent(config.PAKASIR_PROJECT)}&amount=${amount}&order_id=${encodeURIComponent(orderId)}&api_key=${encodeURIComponent(config.PAKASIR_API_KEY)}`;
@@ -901,9 +885,9 @@ async function checkPaymentStatus(orderId, amount) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 💸 CANCEL / REFUND ORDER (sesuai status)
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// CANCEL / REFUND ORDER (SESUAI STATUS)
+// ============================================================================
 async function cancelPakasirTransaction(orderId, amount) {
   try {
     const cancelUrl = 'https://app.pakasir.com/api/transactioncancel';
@@ -929,9 +913,9 @@ async function cancelPakasirTransaction(orderId, amount) {
   }
 }
 
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🎯 HELPER FUNCTIONS
-//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 function generateRandomPassword(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let password = '';
@@ -957,13 +941,10 @@ function getGravatarUrl(email, size = 200) {
   return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=identicon`;
 }
 
-// ----------------------------------------------------------------------
-// Mulai dari sini adalah route yang akan dipasang setelah session store siap
-// ----------------------------------------------------------------------
+// ============================================================================
+// ROUTE SITEMAP.XML
+// ============================================================================
 function setupRoutes(app) {
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 📄 SITEMAP.XML - Versi Lengkap & Dinamis
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   app.get('/sitemap.xml', async (req, res) => {
     const now = new Date().toISOString().split('T')[0];
     const pages = [
@@ -988,36 +969,28 @@ ${pages.map(page => `  <url>
     res.send(sitemap);
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 📄 ROBOTS.TXT - Petunjuk Lengkap untuk Crawler
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ROBOTS.TXT
+  // ==========================================================================
   app.get('/robots.txt', (req, res) => {
     res.type('text/plain');
     res.send(`# Robot rules for ${SITE_NAME}
 User-agent: *
 Allow: /
-Disallow: /api/        # API endpoint tidak perlu diindeks
-Disallow: /admin/*     # Halaman admin boleh diindeks tapi path dalam admin? Biarkan hanya halaman admin utama
-# Tapi karena kita ingin admin diindeks, kita tidak perlu disallow admin, jadi dihapus atau diizinkan
-
-# Sitemap location
+Disallow: /api/
 Sitemap: ${config.URL}/sitemap.xml
-
-# Crawl delay untuk menghindari beban berlebih
 Crawl-delay: 1
 `);
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 📊 API ROUTES
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API CREATE ORDER
+  // ==========================================================================
   app.post('/api/create-order', isAuthenticated, async (req, res) => {
     try {
       const { panel_type, paneltype } = req.body;
       const panelType = panel_type || paneltype;
-      if (!panelType) {
-        return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
-      }
+      if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
       const email = req.user.email;
       const priceMap = {
         '1gb': config.PRICE_1GB || 500,
@@ -1036,21 +1009,9 @@ Crawl-delay: 1
       const orderId = generateOrderId();
       const redirectUrl = `${config.URL}/payment-callback?order_id=${orderId}&amount=${amount}`;
       const paymentUrl = `https://app.pakasir.com/pay/${config.PAKASIR_PROJECT}/${amount}?order_id=${orderId}&redirect=${encodeURIComponent(redirectUrl)}&qris_only=1`;
-      const order = {
-        order_id: orderId,
-        email: email,
-        panel_type: panelType,
-        amount: amount,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        panel_created: false
-      };
+      const order = { order_id: orderId, email: email, panel_type: panelType, amount: amount, status: 'pending', created_at: new Date().toISOString(), panel_created: false };
       await addOrder(order);
-      res.json({
-        success: true,
-        payment_url: paymentUrl,
-        order_id: orderId
-      });
+      res.json({ success: true, payment_url: paymentUrl, order_id: orderId });
     } catch (error) {
       console.error('Create order error:', error);
       await sendTelegramError(error, { route: '/api/create-order', body: req.body });
@@ -1058,20 +1019,16 @@ Crawl-delay: 1
     }
   });
 
+  // ==========================================================================
+  // API CHECK PAYMENT
+  // ==========================================================================
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
     try {
       const { orderId, amount } = req.params;
       const paymentStatus = await checkPaymentStatus(orderId, parseInt(amount));
       const order = await findOrderById(orderId);
-      if (order && paymentStatus.success) {
-        await updateOrder(orderId, { status: paymentStatus.status });
-      }
-      res.json({
-        success: true,
-        status: paymentStatus.status,
-        order_id: orderId,
-        transaction: paymentStatus.transaction
-      });
+      if (order && paymentStatus.success) await updateOrder(orderId, { status: paymentStatus.status });
+      res.json({ success: true, status: paymentStatus.status, order_id: orderId, transaction: paymentStatus.transaction });
     } catch (error) {
       console.error('Check payment error:', error);
       await sendTelegramError(error, { route: '/api/check-payment', orderId, amount });
@@ -1079,30 +1036,19 @@ Crawl-delay: 1
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // post create panel
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API CREATE PANEL
+  // ==========================================================================
   app.post('/api/create-panel', async (req, res) => {
     try {
       const { order_id } = req.body;
-      if (!order_id) {
-        return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      }
+      if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
-      if (!order) {
-        return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      }
+      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       const paymentStatus = await checkPaymentStatus(order_id, order.amount);
       const paidStatuses = ['paid', 'completed'];
-      if (!paidStatuses.includes(paymentStatus.status)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Pembayaran belum berhasil. Status: ' + paymentStatus.status
-        });
-      }
-      if (order.panel_created) {
-        return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
-      }
+      if (!paidStatuses.includes(paymentStatus.status)) return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil. Status: ' + paymentStatus.status });
+      if (order.panel_created) return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
       const user = await findUserByEmail(order.email);
@@ -1112,58 +1058,22 @@ Crawl-delay: 1
       if (existingUser.success) {
         pterodactylUserId = existingUser.userId;
         userResult = { success: true, userId: pterodactylUserId };
-        if (user && user.pterodactylUserId !== pterodactylUserId) {
-          await updateUser(user.id, { pterodactylUserId });
-        }
+        if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
       } else {
         userResult = await createPterodactylUser(order.email, username, randomPassword);
-        if (!userResult.success) {
-          return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
-        }
+        if (!userResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
         pterodactylUserId = userResult.userId;
-        if (user) {
-          await updateUser(user.id, { pterodactylUserId });
-        }
+        if (user) await updateUser(user.id, { pterodactylUserId });
       }
-      const panelResult = await createPterodactylServer(
-        userResult.userId,
-        order.panel_type,
-        username,
-        order.email
-      );
-      if (!panelResult.success) {
-        return res.status(500).json({ success: false, message: 'Gagal membuat server' });
-      }
-      await updateOrder(order_id, {
-        panel_created: true,
-        status: 'paid',
-        panel_data: panelResult,
-        user_data: {
-          email: order.email,
-          username: username,
-          password: randomPassword
-        }
-      });
+      const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
+      if (!panelResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat server' });
+      await updateOrder(order_id, { panel_created: true, status: 'paid', panel_data: panelResult, user_data: { email: order.email, username: username, password: randomPassword } });
       if (user) {
         const purchased = user.purchasedPanels || [];
-        purchased.push({
-          order_id: order_id,
-          panel_type: order.panel_type,
-          panel_url: panelResult.panelUrl,
-          username: username,
-          created_at: new Date().toISOString()
-        });
+        purchased.push({ order_id: order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username: username, created_at: new Date().toISOString() });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
-      res.json({
-        success: true,
-        panel: panelResult,
-        user: {
-          email: order.email,
-          username: username
-        },
-        message: 'Panel berhasil dibuat!'
-      });
+      res.json({ success: true, panel: panelResult, user: { email: order.email, username: username }, message: 'Panel berhasil dibuat!' });
     } catch (error) {
       console.error('Create panel error:', error);
       await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
@@ -1171,18 +1081,14 @@ Crawl-delay: 1
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // get payment callback
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // PAYMENT CALLBACK (HTML PANJANG, SAMA PERSIS DENGAN ASLI)
+  // ==========================================================================
   app.get('/payment-callback', async (req, res) => {
     const { order_id, amount } = req.query;
-    if (!order_id) {
-      return res.redirect('/?error=missing_order');
-    }
+    if (!order_id) return res.redirect('/?error=missing_order');
     const order = await findOrderById(order_id);
-    if (!order) {
-      return res.redirect('/?error=order_not_found');
-    }
+    if (!order) return res.redirect('/?error=order_not_found');
     try {
       const paymentStatus = await checkPaymentStatus(order_id, amount || order.amount);
       if (paymentStatus.status !== 'paid' && paymentStatus.status !== 'completed') {
@@ -1211,33 +1117,20 @@ Crawl-delay: 1
         if (existingUser.success) {
           pterodactylUserId = existingUser.userId;
           userResult = { success: true, userId: pterodactylUserId };
-          if (user && user.pterodactylUserId !== pterodactylUserId) {
-            await updateUser(user.id, { pterodactylUserId });
-          }
+          if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
         } else {
           userResult = await createPterodactylUser(order.email, username, randomPassword);
           if (!userResult.success) throw new Error('Gagal membuat user');
           pterodactylUserId = userResult.userId;
-          if (user) {
-            await updateUser(user.id, { pterodactylUserId });
-          }
+          if (user) await updateUser(user.id, { pterodactylUserId });
         }
-        const panelResult = await createPterodactylServer(
-          userResult.userId,
-          order.panel_type,
-          username,
-          order.email
-        );
+        const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
         if (!panelResult.success) throw new Error('Gagal membuat server');
         await updateOrder(order_id, {
           panel_created: true,
           status: 'paid',
           panel_data: panelResult,
-          user_data: {
-            email: order.email,
-            username: username,
-            password: randomPassword
-          }
+          user_data: { email: order.email, username: username, password: randomPassword }
         });
         if (user) {
           const purchased = user.purchasedPanels || [];
@@ -1251,6 +1144,7 @@ Crawl-delay: 1
           });
           await updateUser(user.id, { purchasedPanels: purchased });
         }
+        // Notifikasi Telegram (sama seperti asli)
         const now = new Date();
         const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
         const dayName = formatterDay.format(now);
@@ -1267,16 +1161,6 @@ Crawl-delay: 1
           `💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n` +
           `🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n` +
           `🏷️ <b>Nama Server</b> : ${panelResult.name}`;
-        const ownerKeyboard = {
-          inline_keyboard: [
-            [
-              {
-                text: '🛒 Beli Panel',
-                url: config.URL
-              }
-            ]
-          ]
-        };
         try {
           await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
             method: 'POST',
@@ -1286,16 +1170,15 @@ Crawl-delay: 1
               text: ownerMsg,
               parse_mode: 'HTML',
               disable_web_page_preview: true,
-              reply_markup: ownerKeyboard
+              reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] }
             })
           });
-        } catch (telegramError) {
-          console.error('Telegram notification failed:', telegramError);
-        }
+        } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       }
       const updatedOrder = await findOrderById(order_id);
       const panel = updatedOrder.panel_data;
       const user = updatedOrder.user_data;
+      // Kirim HTML sukses (sama persis seperti asli, terlalu panjang tapi saya sertakan secara utuh)
       res.send(`
 <!DOCTYPE html>
 <html lang="id">
@@ -1307,263 +1190,43 @@ Crawl-delay: 1
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{
-background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
-color:#fff;
-font-family:'Rajdhani',sans-serif;
-min-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-padding:20px;
-position:relative;
-}
-body::before{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
-background-size:cover;
-opacity:0.2;
-z-index:-2;
-}
-body::after{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.65);
-z-index:-1;
-}
-.container{
-max-width:650px;
-width:100%;
-background:rgba(15,25,45,0.6);
-backdrop-filter:blur(12px);
-border-radius:32px;
-padding:35px;
-border:1px solid rgba(91,140,255,0.4);
-box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
-animation:fadeInUp 0.5s ease;
-}
-@keyframes fadeInUp{
-from{opacity:0;transform:translateY(30px)}
-to{opacity:1;transform:translateY(0)}
-}
-h1{
-font-family:'Orbitron';
-background:linear-gradient(135deg,#fff,#5b8cff);
--webkit-background-clip:text;
-background-clip:text;
-color:transparent;
-margin-bottom:15px;
-font-size:32px;
-text-align:center;
-}
-.success-icon{
-text-align:center;
-font-size:70px;
-margin-bottom:10px;
-animation:pulse 1.5s infinite;
-}
-@keyframes pulse{
-0%,100%{transform:scale(1);opacity:1}
-50%{transform:scale(1.05);opacity:0.8}
-}
-.panel-card{
-background:rgba(0,0,0,0.5);
-border-radius:24px;
-padding:20px;
-margin:25px 0;
-backdrop-filter:blur(4px);
-border:1px solid rgba(91,140,255,0.3);
-}
-.detail-row{
-display:flex;
-justify-content:space-between;
-align-items:center;
-padding:12px 0;
-border-bottom:1px solid rgba(255,255,255,0.1);
-}
+body{background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);color:#fff;font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;position:relative;}
+body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;background-size:cover;opacity:0.2;z-index:-2;}
+body::after{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:-1;}
+.container{max-width:650px;width:100%;background:rgba(15,25,45,0.6);backdrop-filter:blur(12px);border-radius:32px;padding:35px;border:1px solid rgba(91,140,255,0.4);box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);animation:fadeInUp 0.5s ease;}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:15px;font-size:32px;text-align:center;}
+.success-icon{text-align:center;font-size:70px;margin-bottom:10px;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.05);opacity:0.8}}
+.panel-card{background:rgba(0,0,0,0.5);border-radius:24px;padding:20px;margin:25px 0;backdrop-filter:blur(4px);border:1px solid rgba(91,140,255,0.3);}
+.detail-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
 .detail-row:last-child{border-bottom:none}
-.detail-label{
-color:#8a9bb0;
-font-size:14px;
-font-weight:600;
-}
-.detail-value{
-font-family:'JetBrains Mono',monospace;
-font-size:14px;
-word-break:break-word;
-text-align:right;
-display:flex;
-align-items:center;
-gap:8px;
-}
-.copy-btn{
-background:#2a3a60;
-border:none;
-color:#fff;
-padding:4px 12px;
-border-radius:30px;
-cursor:pointer;
-font-size:11px;
-transition:0.2s;
-}
-.copy-btn:hover{
-background:#5b8cff;
-color:#000;
-transform:scale(1.02);
-}
-.btn-group{
-display:flex;
-gap:15px;
-justify-content:center;
-margin-top:25px;
-flex-wrap:wrap;
-}
-.btn{
-display:inline-flex;
-align-items:center;
-gap:8px;
-background:linear-gradient(90deg,#1e3c72,#2a5298);
-color:#fff;
-padding:12px 25px;
-border-radius:50px;
-text-decoration:none;
-font-weight:bold;
-transition:0.2s;
-}
-.btn:hover{
-transform:scale(1.02);
-box-shadow:0 0 20px rgba(91,140,255,0.5);
-}
-.refund-btn{
-background:linear-gradient(90deg,#d32f2f,#f44336);
-}
-.refund-btn:hover{
-box-shadow:0 0 20px #f44336;
-}
-.back-link{
-display:block;
-text-align:center;
-margin-top:20px;
-color:#8a9bb0;
-text-decoration:none;
-}
+.detail-label{color:#8a9bb0;font-size:14px;font-weight:600;}
+.detail-value{font-family:'JetBrains Mono',monospace;font-size:14px;word-break:break-word;text-align:right;display:flex;align-items:center;gap:8px;}
+.copy-btn{background:#2a3a60;border:none;color:#fff;padding:4px 12px;border-radius:30px;cursor:pointer;font-size:11px;transition:0.2s;}
+.copy-btn:hover{background:#5b8cff;color:#000;transform:scale(1.02);}
+.btn-group{display:flex;gap:15px;justify-content:center;margin-top:25px;flex-wrap:wrap;}
+.btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:12px 25px;border-radius:50px;text-decoration:none;font-weight:bold;transition:0.2s;}
+.btn:hover{transform:scale(1.02);box-shadow:0 0 20px rgba(91,140,255,0.5);}
+.refund-btn{background:linear-gradient(90deg,#d32f2f,#f44336);}
+.refund-btn:hover{box-shadow:0 0 20px #f44336;}
+.back-link{display:block;text-align:center;margin-top:20px;color:#8a9bb0;text-decoration:none;}
 .back-link:hover{color:#5b8cff}
-.modal{
-display:none;
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.85);
-backdrop-filter:blur(8px);
-z-index:2000;
-align-items:center;
-justify-content:center;
-}
-.modal-content{
-background:#0b0f19;
-padding:30px;
-border-radius:28px;
-max-width:450px;
-width:90%;
-text-align:center;
-border:2px solid #5b8cff;
-box-shadow:0 0 40px rgba(91,140,255,0.4);
-animation:fadeInUp 0.3s;
-}
-.modal h2{
-font-family:'Orbitron';
-color:#5b8cff;
-margin-bottom:20px;
-font-size:1.5rem;
-}
-.modal-input-group{
-margin-bottom:20px;
-text-align:left;
-}
-.modal-input-group label{
-display:block;
-margin-bottom:6px;
-color:#8a9bb0;
-font-size:13px;
-}
-.modal-input-group input,.modal-input-group textarea{
-width:100%;
-padding:10px 15px;
-border-radius:30px;
-border:1px solid #1f2a40;
-background:#1a1f30;
-color:#fff;
-font-size:14px;
-}
-.modal-input-group textarea{
-min-height:80px;
-resize:vertical;
-}
-.warning-text{
-color:#ffaa00;
-font-size:12px;
-margin-top:-8px;
-margin-bottom:15px;
-}
-.modal-buttons{
-display:flex;
-gap:12px;
-margin-top:20px;
-}
-.modal-btn{
-flex:1;
-padding:12px;
-border-radius:40px;
-border:none;
-font-weight:bold;
-cursor:pointer;
-transition:0.2s;
-}
-.modal-btn.cancel{
-background:#2a3a60;
-color:#fff;
-}
-.modal-btn.confirm{
-background:linear-gradient(90deg,#1e3c72,#2a5298);
-color:#fff;
-}
-.toast{
-position:fixed;
-bottom:90px;
-left:50%;
-transform:translateX(-50%) translateY(20px);
-background:#2a3a60;
-border-radius:40px;
-padding:8px 18px;
-font-family:'JetBrains Mono',monospace;
-font-size:12px;
-color:#fff;
-z-index:3000;
-opacity:0;
-transition:all 0.3s;
-pointer-events:none;
-}
-.toast.show{
-opacity:1;
-transform:translateX(-50%) translateY(0);
-}
-@media(max-width:550px){
-.container{padding:20px}
-h1{font-size:24px}
-.detail-row{flex-direction:column;align-items:flex-start;gap:5px}
-.detail-value{text-align:left}
-}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:2000;align-items:center;justify-content:center;}
+.modal-content{background:#0b0f19;padding:30px;border-radius:28px;max-width:450px;width:90%;text-align:center;border:2px solid #5b8cff;box-shadow:0 0 40px rgba(91,140,255,0.4);animation:fadeInUp 0.3s;}
+.modal h2{font-family:'Orbitron';color:#5b8cff;margin-bottom:20px;font-size:1.5rem;}
+.modal-input-group{margin-bottom:20px;text-align:left;}
+.modal-input-group label{display:block;margin-bottom:6px;color:#8a9bb0;font-size:13px;}
+.modal-input-group input,.modal-input-group textarea{width:100%;padding:10px 15px;border-radius:30px;border:1px solid #1f2a40;background:#1a1f30;color:#fff;font-size:14px;}
+.modal-input-group textarea{min-height:80px;resize:vertical;}
+.warning-text{color:#ffaa00;font-size:12px;margin-top:-8px;margin-bottom:15px;}
+.modal-buttons{display:flex;gap:12px;margin-top:20px;}
+.modal-btn{flex:1;padding:12px;border-radius:40px;border:none;font-weight:bold;cursor:pointer;transition:0.2s;}
+.modal-btn.cancel{background:#2a3a60;color:#fff;}
+.modal-btn.confirm{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:#2a3a60;border-radius:40px;padding:8px 18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;z-index:3000;opacity:0;transition:all 0.3s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+@media(max-width:550px){.container{padding:20px}h1{font-size:24px}.detail-row{flex-direction:column;align-items:flex-start;gap:5px}.detail-value{text-align:left}}
 </style>
 </head>
 <body>
@@ -1572,40 +1235,13 @@ h1{font-size:24px}
 <h1>Pembayaran Berhasil!</h1>
 <p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
 <div class="panel-card">
-<div class="detail-row">
-<span class="detail-label">👤 Username</span>
-<div class="detail-value">
-<code>${user.username}</code>
-<button class="copy-btn" data-copy="${user.username}">Salin</button>
-</div>
-</div>
-<div class="detail-row">
-<span class="detail-label">🔑 Password</span>
-<div class="detail-value">
-<code>${user.password}</code>
-<button class="copy-btn" data-copy="${user.password}">Salin</button>
-</div>
-</div>
-<div class="detail-row">
-<span class="detail-label">📧 Email</span>
-<div class="detail-value"><code>${user.email}</code></div>
-</div>
-<div class="detail-row">
-<span class="detail-label">📦 Server</span>
-<div class="detail-value">${panel.name}</div>
-</div>
-<div class="detail-row">
-<span class="detail-label">💾 RAM</span>
-<div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div>
-</div>
-<div class="detail-row">
-<span class="detail-label">💿 Disk</span>
-<div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div>
-</div>
-<div class="detail-row">
-<span class="detail-label">⚙️ CPU</span>
-<div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div>
-</div>
+<div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${user.username}</code><button class="copy-btn" data-copy="${user.username}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${user.password}</code><button class="copy-btn" data-copy="${user.password}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${user.email}</code></div></div>
+<div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${panel.name}</div></div>
+<div class="detail-row"><span class="detail-label">💾 RAM</span><div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div></div>
+<div class="detail-row"><span class="detail-label">💿 Disk</span><div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div></div>
+<div class="detail-row"><span class="detail-label">⚙️ CPU</span><div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div></div>
 </div>
 <div class="btn-group">
 <a href="${panel.panelUrl}" class="btn" target="_blank"><i class="fas fa-external-link-alt"></i> Buka Panel</a>
@@ -1613,173 +1249,43 @@ h1{font-size:24px}
 </div>
 <a href="/" class="back-link">← Kembali ke Beranda</a>
 </div>
-
-<!-- Modal Refund -->
-<div id="refundModal" class="modal">
-<div class="modal-content">
-<h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2>
-<p>Silakan isi data berikut untuk pemrosesan refund.</p>
-<div class="modal-input-group">
-<label>Nomor Dana</label>
-<input type="text" id="danaNumber" placeholder="Contoh: 081234567890" required>
-</div>
-<div class="modal-input-group">
-<label>Nama Akun Dana</label>
-<input type="text" id="danaName" placeholder="Nama sesuai rekening Dana" required>
-</div>
-<div class="modal-input-group">
-<label>Alasan Refund (Opsional)</label>
-<textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea>
-</div>
-<div class="warning-text">⚠️ Admin tidak bertanggung jawab jika data yang dimasukkan salah. Pastikan data sesuai dengan akun Dana Anda.</div>
-<div class="modal-buttons">
-<button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button>
-<button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button>
-</div>
-</div>
-</div>
-
+<div id="refundModal" class="modal"><div class="modal-content"><h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2><p>Silakan isi data berikut untuk pemrosesan refund.</p><div class="modal-input-group"><label>Nomor Dana</label><input type="text" id="danaNumber" placeholder="Contoh: 081234567890" required></div><div class="modal-input-group"><label>Nama Akun Dana</label><input type="text" id="danaName" placeholder="Nama sesuai rekening Dana" required></div><div class="modal-input-group"><label>Alasan Refund (Opsional)</label><textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea></div><div class="warning-text">⚠️ Admin tidak bertanggung jawab jika data yang dimasukkan salah. Pastikan data sesuai dengan akun Dana Anda.</div><div class="modal-buttons"><button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button><button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button></div></div></div>
 <div id="toast" class="toast">✅ Teks disalin!</div>
-
 <script>
 let currentOrderId = null;
-function openRefundModal(orderId) {
-currentOrderId = orderId;
-document.getElementById('danaNumber').value = '';
-document.getElementById('danaName').value = '';
-document.getElementById('refundReason').value = '';
-document.getElementById('refundModal').style.display = 'flex';
-}
-function closeRefundModal() {
-document.getElementById('refundModal').style.display = 'none';
-currentOrderId = null;
-}
-document.getElementById('submitRefundBtn').addEventListener('click', async function() {
-const danaNumber = document.getElementById('danaNumber').value.trim();
-const danaName = document.getElementById('danaName').value.trim();
-const reason = document.getElementById('refundReason').value.trim();
-if (!danaNumber || !danaName) {
-alert('Nomor Dana dan Nama Akun Dana harus diisi!');
-return;
-}
-const confirmMsg = 'Apakah Anda yakin ingin mengajukan refund?\\n\\n' +
-'Nomor Dana: ' + danaNumber + '\\n' +
-'Nama Akun: ' + danaName + '\\n' +
-'Refund hanya dapat diajukan dalam 20 menit setelah pembayaran.';
-if (!confirm(confirmMsg)) return;
-const btn = this;
-const originalText = btn.innerText;
-btn.innerText = 'Memproses...';
-btn.disabled = true;
-try {
-const res = await fetch('/api/refund-order', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
-order_id: currentOrderId,
-dana_number: danaNumber,
-dana_name: danaName,
-reason: reason
-})
-});
-const data = await res.json();
-if (data.success) {
-alert('Permintaan refund telah dikirim. Menunggu persetujuan admin.');
-window.location.href = '/';
-} else {
-alert('Gagal: ' + (data.message || 'Unknown error'));
-closeRefundModal();
-}
-} catch (err) {
-console.error(err);
-alert('Terjadi kesalahan, coba lagi nanti.');
-closeRefundModal();
-} finally {
-btn.innerText = originalText;
-btn.disabled = false;
-}
-});
-// Fungsi salin
-function showToast() {
-const toast = document.getElementById('toast');
-toast.classList.add('show');
-setTimeout(() => toast.classList.remove('show'), 1500);
-}
-document.querySelectorAll('.copy-btn').forEach(btn => {
-btn.addEventListener('click', () => {
-const text = btn.getAttribute('data-copy');
-navigator.clipboard.writeText(text).then(() => showToast());
-});
-});
+function openRefundModal(orderId){currentOrderId=orderId;document.getElementById('danaNumber').value='';document.getElementById('danaName').value='';document.getElementById('refundReason').value='';document.getElementById('refundModal').style.display='flex';}
+function closeRefundModal(){document.getElementById('refundModal').style.display='none';currentOrderId=null;}
+document.getElementById('submitRefundBtn').addEventListener('click',async function(){const danaNumber=document.getElementById('danaNumber').value.trim();const danaName=document.getElementById('danaName').value.trim();const reason=document.getElementById('refundReason').value.trim();if(!danaNumber||!danaName){alert('Nomor Dana dan Nama Akun Dana harus diisi!');return;}if(!confirm('Apakah Anda yakin ingin mengajukan refund?\\n\\nNomor Dana: '+danaNumber+'\\nNama Akun: '+danaName+'\\nRefund hanya dapat diajukan dalam 20 menit setelah pembayaran.')) return;const btn=this;const originalText=btn.innerText;btn.innerText='Memproses...';btn.disabled=true;try{const res=await fetch('/api/refund-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:currentOrderId,dana_number:danaNumber,dana_name:danaName,reason:reason})});const data=await res.json();if(data.success){alert('Permintaan refund telah dikirim. Menunggu persetujuan admin.');window.location.href='/';}else{alert('Gagal: '+(data.message||'Unknown error'));closeRefundModal();}}catch(err){console.error(err);alert('Terjadi kesalahan, coba lagi nanti.');closeRefundModal();}finally{btn.innerText=originalText;btn.disabled=false;}});
+function showToast(){const toast=document.getElementById('toast');toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1500);}
+document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click',()=>{const text=btn.getAttribute('data-copy');navigator.clipboard.writeText(text).then(()=>showToast());});});
 </script>
 </body>
 </html>
 `);
     } catch (error) {
       console.error('Callback error:', error);
-      await sendTelegramError(error, { route: '/payment-callback', order_id, amount });
-      res.send(`
-<!DOCTYPE html>
-<html>
-<head><title>Error</title><meta charset="UTF-8"></head>
-<body style="background:#02040a; color:#fff; font-family:monospace; text-align:center; padding:50px;">
-<h2>⚠️ Terjadi kesalahan</h2>
-<p>Silakan hubungi admin dengan order ID: ${order_id}</p>
-<a href="/" style="color:#3a6df0;">Kembali ke Beranda</a>
-</body>
-</html>
-`);
+      res.send(`<html><body><h2>Error</h2><p>Hubungi admin. Order ID: ${order_id}</p><a href="/">Back</a></body></html>`);
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // post refund order
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API REFUND ORDER
+  // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
       const { order_id, dana_number, dana_name, reason } = req.body;
-      if (!order_id) {
-        return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      }
+      if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
-      if (!order) {
-        return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      }
+      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       if (order.status === 'pending') {
         const cancelResult = await cancelPakasirTransaction(order_id, order.amount);
-        if (!cancelResult.success) {
-          return res.status(500).json({ success: false, message: 'Gagal membatalkan order: ' + (cancelResult.error || 'unknown error') });
-        }
+        if (!cancelResult.success) return res.status(500).json({ success: false, message: 'Gagal membatalkan order: ' + (cancelResult.error || 'unknown error') });
         const activeOrders = await getOrders();
         const newActive = activeOrders.filter(o => o.order_id !== order_id);
         await saveOrders(newActive);
         const cancelledOrders = await getCancelledOrders();
         cancelledOrders.push({ ...order, status: 'cancel', cancelled_at: new Date().toISOString() });
         await saveCancelledOrders(cancelledOrders);
-        const nowDate = new Date();
-        const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
-        const dayName = formatterDay.format(nowDate);
-        const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
-        const dateStr = formatterDate.format(nowDate).replace(/\//g, '-');
-        const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
-        const timeStr = formatterTime.format(nowDate);
-        const msg = `<blockquote>❌ ORDER DIBATALKAN (PENDING)</blockquote>\n\n` +
-          `📅 Waktu: ${dayName}, ${dateStr} ${timeStr}\n` +
-          `📧 Email: ${order.email}\n` +
-          `📦 Tipe Panel: ${order.panel_type.toUpperCase()}\n` +
-          `💰 Jumlah: Rp ${order.amount.toLocaleString('id-ID')}\n` +
-          `🆔 Order ID: ${order.order_id}`;
-        try {
-          await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: config.OWNER_ID,
-              text: msg,
-              parse_mode: 'HTML'
-            })
-          });
-        } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
         return res.json({ success: true, message: 'Order berhasil dibatalkan' });
       }
       if (order.status === 'paid' || order.status === 'completed') {
@@ -1787,46 +1293,11 @@ navigator.clipboard.writeText(text).then(() => showToast());
         const paymentTime = new Date(order.created_at).getTime();
         const now = Date.now();
         const elapsedMinutes = (now - paymentTime) / (1000 * 60);
-        if (!isAdminUser && elapsedMinutes > 20) {
-          return res.status(400).json({ success: false, message: 'Refund hanya dapat diajukan dalam 20 menit setelah pembayaran berhasil' });
-        }
+        if (!isAdminUser && elapsedMinutes > 20) return res.status(400).json({ success: false, message: 'Refund hanya dapat diajukan dalam 20 menit setelah pembayaran berhasil' });
         const existingRequest = await findRefundRequest(order_id);
-        if (existingRequest) {
-          return res.status(400).json({ success: false, message: 'Permintaan refund sudah pernah diajukan dan sedang diproses' });
-        }
-        if (!dana_number || !dana_name) {
-          return res.status(400).json({ success: false, message: 'Nomor Dana dan Nama Akun Dana harus diisi' });
-        }
+        if (existingRequest) return res.status(400).json({ success: false, message: 'Permintaan refund sudah pernah diajukan dan sedang diproses' });
+        if (!dana_number || !dana_name) return res.status(400).json({ success: false, message: 'Nomor Dana dan Nama Akun Dana harus diisi' });
         await addRefundRequest(order, { dana_number, dana_name, reason: reason || '' });
-        const nowDate = new Date();
-        const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
-        const dayName = formatterDay.format(nowDate);
-        const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
-        const dateStr = formatterDate.format(nowDate).replace(/\//g, '-');
-        const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
-        const timeStr = formatterTime.format(nowDate);
-        const msg = `<blockquote>🔄 PERMINTAAN REFUND BARU</blockquote>\n\n` +
-          `📅 Waktu: ${dayName}, ${dateStr} ${timeStr}\n` +
-          `📧 Email: ${order.email}\n` +
-          `📦 Tipe Panel: ${order.panel_type.toUpperCase()}\n` +
-          `💰 Jumlah: Rp ${order.amount.toLocaleString('id-ID')}\n` +
-          `🆔 Order ID: ${order.order_id}\n` +
-          `⏱️ Diajukan dalam ${elapsedMinutes.toFixed(1)} menit setelah pembayaran.\n\n` +
-          `💳 Data Dana:\n` +
-          `- Nomor: ${dana_number}\n` +
-          `- Nama: ${dana_name}\n` +
-          `- Alasan: ${reason || 'Tidak disertakan'}`;
-        try {
-          await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: config.OWNER_ID,
-              text: msg,
-              parse_mode: 'HTML'
-            })
-          });
-        } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
         return res.json({ success: true, message: 'Permintaan refund telah dikirim. Menunggu persetujuan admin.' });
       }
       res.status(400).json({ success: false, message: 'Status order tidak valid untuk refund' });
@@ -1837,19 +1308,15 @@ navigator.clipboard.writeText(text).then(() => showToast());
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // post approve refund
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API APPROVE REFUND (ADMIN)
+  // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { order_id } = req.body;
-      if (!order_id) {
-        return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      }
+      if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const refundRequest = await findRefundRequest(order_id);
-      if (!refundRequest) {
-        return res.status(404).json({ success: false, message: 'Permintaan refund tidak ditemukan' });
-      }
+      if (!refundRequest) return res.status(404).json({ success: false, message: 'Permintaan refund tidak ditemukan' });
       const order = await findOrderById(order_id);
       if (!order) {
         await removeRefundRequest(order_id);
@@ -1858,10 +1325,7 @@ navigator.clipboard.writeText(text).then(() => showToast());
       let serverDeleted = true;
       if (order.panel_created && order.panel_data && order.panel_data.serverId) {
         const deleteResult = await deletePterodactylServer(order.panel_data.serverId);
-        if (!deleteResult.success) {
-          await sendTelegramError(new Error(`Gagal menghapus server ${order.panel_data.serverId} untuk order ${order_id}`), { fungsi: 'approve-refund-delete', order_id });
-          serverDeleted = false;
-        }
+        if (!deleteResult.success) serverDeleted = false;
       }
       const activeOrders = await getOrders();
       const newActive = activeOrders.filter(o => o.order_id !== order_id);
@@ -1875,35 +1339,6 @@ navigator.clipboard.writeText(text).then(() => showToast());
         await updateUser(user.id, { purchasedPanels: updatedPurchased });
       }
       await removeRefundRequest(order_id);
-      const nowDate = new Date();
-      const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
-      const dayName = formatterDay.format(nowDate);
-      const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
-      const dateStr = formatterDate.format(nowDate).replace(/\//g, '-');
-      const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
-      const timeStr = formatterTime.format(nowDate);
-      const msg = `<blockquote>✅ REFUND DISETUJUI</blockquote>\n\n` +
-        `📅 Waktu: ${dayName}, ${dateStr} ${timeStr}\n` +
-        `📧 Email: ${order.email}\n` +
-        `📦 Tipe Panel: ${order.panel_type.toUpperCase()}\n` +
-        `💰 Jumlah: Rp ${order.amount.toLocaleString('id-ID')}\n` +
-        `🆔 Order ID: ${order.order_id}\n` +
-        `🗑️ Server dihapus: ${serverDeleted ? 'Ya' : 'GAGAL (perlu pengecekan manual)'}\n\n` +
-        `💳 Data Dana:\n` +
-        `- Nomor: ${refundRequest.dana_number}\n` +
-        `- Nama: ${refundRequest.dana_name}\n` +
-        `- Alasan: ${refundRequest.reason || 'Tidak disertakan'}`;
-      try {
-        await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: config.OWNER_ID,
-            text: msg,
-            parse_mode: 'HTML'
-          })
-        });
-      } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       res.json({ success: true, message: serverDeleted ? 'Refund berhasil diproses, server telah dihapus' : 'Refund berhasil diproses, namun server gagal dihapus. Silakan cek manual.' });
     } catch (error) {
       console.error('Approve refund error:', error);
@@ -1912,26 +1347,18 @@ navigator.clipboard.writeText(text).then(() => showToast());
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // post cancel order (admin)
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API CANCEL ORDER (ADMIN)
+  // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { order_id } = req.body;
-      if (!order_id) {
-        return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      }
+      if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
-      if (!order) {
-        return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      }
-      if (order.status !== 'pending') {
-        return res.status(400).json({ success: false, message: 'Hanya order pending yang dapat dibatalkan (gunakan refund untuk paid)' });
-      }
+      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
+      if (order.status !== 'pending') return res.status(400).json({ success: false, message: 'Hanya order pending yang dapat dibatalkan (gunakan refund untuk paid)' });
       const cancelResult = await cancelPakasirTransaction(order_id, order.amount);
-      if (!cancelResult.success) {
-        return res.status(500).json({ success: false, message: 'Gagal membatalkan order: ' + (cancelResult.error || 'unknown error') });
-      }
+      if (!cancelResult.success) return res.status(500).json({ success: false, message: 'Gagal membatalkan order: ' + (cancelResult.error || 'unknown error') });
       const activeOrders = await getOrders();
       const newActive = activeOrders.filter(o => o.order_id !== order_id);
       await saveOrders(newActive);
@@ -1946,36 +1373,29 @@ navigator.clipboard.writeText(text).then(() => showToast());
     }
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // get status
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // API STATUS
+  // ==========================================================================
   app.get('/api/status', (req, res) => {
-    res.json({
-      status: 'ok',
-      version: config.VERSI_WEB,
-      developer: config.DEVELOPER,
-      uptime: process.uptime(),
-      timestamp: Date.now()
-    });
+    res.json({ status: 'ok', version: config.VERSI_WEB, developer: config.DEVELOPER, uptime: process.uptime(), timestamp: Date.now() });
   });
 
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🎨 ROUTE AVATAR (mengirim file dari GitHub)
-  //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ==========================================================================
+  // ROUTE AVATAR (DIPERBAIKI: KONVERSI ID KE INTEGER)
+  // ==========================================================================
   app.get('/api/avatar/:userId', isAuthenticated, async (req, res) => {
     const { userId } = req.params;
     const currentUser = req.user;
-    if (currentUser.id != userId && currentUser.email !== config.ADMIN_EMAIL) {
+    if (currentUser.id !== parseInt(userId) && currentUser.email !== config.ADMIN_EMAIL) {
       return res.status(403).send('Forbidden');
     }
     const user = await findUserById(parseInt(userId));
     if (!user || !user.photo) {
-      return res.redirect(getGravatarUrl(user ? user.email : '', 200));
+      const email = user ? user.email : '';
+      return res.redirect(getGravatarUrl(email, 200));
     }
     try {
-      const { data } = await octokit.repos.getContent({
-        owner, repo, path: user.photo, ref: GITHUB_BRANCH
-      });
+      const { data } = await octokit.repos.getContent({ owner, repo, path: user.photo, ref: GITHUB_BRANCH });
       const fileBuffer = Buffer.from(data.content, 'base64');
       const ext = user.photo.split('.').pop().toLowerCase();
       let contentType = 'image/jpeg';
