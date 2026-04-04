@@ -1660,13 +1660,13 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
     }
   });
 
-  // ==========================================================================
-  // ROUTE LOGIN (GET & POST)
-  // ==========================================================================
-  app.get('/login', (req, res) => {
-    if (req.isAuthenticated()) return res.redirect('/profile');
-    const error = req.flash('error')[0];
-    const html = `
+// ==========================================================================
+// ROUTE LOGIN (GET & POST) – DENGAN LOGO & LEBIH TRANSPARAN
+// ==========================================================================
+app.get('/login', (req, res) => {
+  if (req.isAuthenticated()) return res.redirect('/profile');
+  const error = req.flash('error')[0];
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1685,12 +1685,36 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:0}
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:0} /* overlay lebih terang agar background lebih terlihat */
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
-.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.8);backdrop-filter:blur(5px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
+.back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.6);backdrop-filter:blur(5px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
-.login-box{background:rgba(15,19,32,0.95);backdrop-filter:blur(10px);border:1px solid #2a3a60;border-radius:24px;padding:40px;width:100%;max-width:400px;box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33;text-align:center;animation:glow 3s infinite alternate;position:relative;z-index:1;margin:auto}
+.login-box{
+background:rgba(15,19,32,0.65); /* lebih transparan dari 0.95 */
+backdrop-filter:blur(5px); /* blur dikurangi agar background kelihatan */
+border:1px solid #2a3a60;
+border-radius:24px;
+padding:40px;
+width:100%;
+max-width:400px;
+box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33;
+text-align:center;
+animation:glow 3s infinite alternate;
+position:relative;
+z-index:1;
+margin:auto
+}
 @keyframes glow{0%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 20px #5b8cff33}100%{box-shadow:0 20px 40px rgba(0,0,0,0.8),0 0 40px #5b8cff80}}
+.logo-login {
+width: 70px;
+height: auto;
+margin-bottom: 15px;
+border-radius: 12px;
+transition: transform 0.2s;
+}
+.logo-login:hover {
+transform: scale(1.05);
+}
 h2{font-family:'Orbitron',sans-serif;color:#5b8cff;margin-bottom:20px;font-size:28px;letter-spacing:2px;text-shadow:0 0 10px #5b8cff}
 .input-group{margin-bottom:25px;text-align:left}
 label{display:block;margin-bottom:8px;color:#8a9bb0;font-size:14px;font-weight:600}
@@ -1710,6 +1734,7 @@ button:hover{transform:scale(1.02);box-shadow:0 0 20px #5b8cff}
 <body>
 <div class="back-home"><a href="/"><i class="fas fa-home"></i> Kembali ke Beranda</a></div>
 <div class="login-box">
+<img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="logo-login">
 <h2>🔐 ${SITE_NAME}</h2>
 <div class="error" id="errorMessage" style="${error ? '' : 'display:none;'}">${error ? escapeHTML(error) : ''}</div>
 <form action="/login" method="POST">
@@ -1736,8 +1761,8 @@ errorDiv.style.display = 'block';
 </body>
 </html>
 `;
-    res.send(html);
-  });
+  res.send(html);
+});
 
   app.post('/login', (req, res, next) => {
     passport.authenticate('local', (err, user, info) => {
