@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=0.70">
-<title>Login - ${SITE_NAME} cpanel</title>
-<link rel="icon" type="image/jpeg" href="${config.FAVICON}">
-<link rel="shortcut icon" href="${config.FAVICON}">
-<meta property="og:title" content="Login - ${config.SITE_NAME || 'NovaBot'} Panel">
-<meta property="og:description" content="Akses panel ${config.SITE_NAME || 'NovaBot'} dengan akun Anda.">
-<meta property="og:image" content="${config.FAVICON}">
-<meta property="og:url" content="${config.URL}/login">
+<title>Login - {{SITE_NAME}} cpanel</title>
+<link rel="icon" type="image/jpeg" href="{{FAVICON}}">
+<link rel="shortcut icon" href="{{FAVICON}}">
+<meta property="og:title" content="Login - {{SITE_NAME}} Panel">
+<meta property="og:description" content="Akses panel {{SITE_NAME}} dengan akun Anda.">
+<meta property="og:image" content="{{FAVICON}}">
+<meta property="og:url" content="{{URL}}/login">
 <meta property="og:type" content="website">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -68,10 +68,10 @@ button:hover{transform:scale(1.02);box-shadow:0 0 20px #5b8cff}
 <body>
 <div class="back-home"><a href="/"><i class="fas fa-home"></i> Kembali ke Beranda</a></div>
 <div class="login-box">
-<img src="https://files.catbox.moe/u47x3d.png" alt="Logo ${SITE_NAME}" class="logo-login">
-<div class="error" id="errorMessage" style="${error ? '' : 'display:none;'}">${error ? escapeHTML(error) : ''}</div>
+<img src="https://files.catbox.moe/u47x3d.png" alt="Logo {{SITE_NAME}}" class="logo-login">
+<div class="error" id="errorMessage" {{#if errorMessage}}style="display:block;"{{else}}style="display:none;"{{/if}}>{{errorMessage}}</div>
 <form action="/login" method="POST">
-<input type="hidden" name="_csrf" value="${req.csrfToken()}">
+<input type="hidden" name="_csrf" value="{{csrfToken}}">
 <div class="input-group"><label>EMAIL</label><input type="email" name="email" placeholder="email@example.com" required></div>
 <div class="input-group"><label>PASSWORD</label><input type="password" name="password" placeholder="••••••••" required></div>
 <button type="submit">LOGIN</button>
