@@ -898,28 +898,29 @@ async function deletePterodactylServer(serverId) {
 
 async function generateQrispyQR(amount, paymentReference) {
   try {
+    const token = (QRISPY_API_TOKEN || '').trim();
+    if (!token) throw new Error('Token QRISPY kosong');
+    
     const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/generate`, {
       method: 'POST',
       headers: {
-        'X-API-Token': QRISPY_API_TOKEN.trim(), // pastikan tidak ada spasi
+        'X-API-Token': token,
         'Content-Type': 'application/json',
-        'Accept': 'application/json'            // kunci utama
+        'Accept': 'application/json',
+        'User-Agent': `${SITE_NAME}/1.0 (Node.js)`
       },
       body: JSON.stringify({ amount, payment_reference: paymentReference })
     });
 
-    // Debug: lihat status dan raw response
     const text = await response.text();
-    console.log('Status:', response.status);
-    console.log('Response:', text.substring(0, 200));
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`Invalid JSON (status ${response.status}): ${text.substring(0, 200)}`);
+    console.log('QRIS Response Status:', response.status);
+    console.log('QRIS Response Body (first 200):', text.substring(0, 200));
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
     }
-
+    
+    const data = JSON.parse(text);
     if (data.status !== 'success') {
       throw new Error(data.message || 'Gagal generate QRIS');
     }
@@ -4795,14 +4796,22 @@ async function startServer() {
     app.use(passport.initialize());
     app.use(passport.session());
     app.use(flash());
+    
+    // ========== MODIFIKASI CSRF ==========
     const csrfProtection = csrf({ cookie: true });
     app.use((req, res, next) => {
-      if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
+      // Lewati CSRF untuk semua API (termasuk /api/*)
+      if (req.originalUrl.startsWith('/api/')) {
+        return next();
+      }
+      // Terapkan CSRF hanya untuk POST non-API
+      if (req.method === 'POST') {
         return csrfProtection(req, res, next);
       }
-      if (req.path.startsWith('/api/')) return next();
-      return csrfProtection(req, res, next);
+      next();
     });
+    // ====================================
+    
     if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
       passport.use(new GoogleStrategy({
         clientID: config.GOOGLE_CLIENT_ID,
