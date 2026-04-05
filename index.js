@@ -14,7 +14,7 @@ const multer = require('multer');
 const { Octokit } = require('@octokit/rest');
 const config = require('./setting.js');
 const jwt = require('jsonwebtoken');
-
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const app = express();
 const SITE_NAME = config.SITE_NAME || 'novanet';
 const PORT = config.PORT || 8080;
@@ -25,7 +25,52 @@ const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-se
 // ==================== KONFIGURASI QRISPY ====================
 const QRISPY_API_URL = 'https://api.qrispy.id';
 const QRISPY_API_TOKEN = config.QRISPY_API_TOKEN;
-
+// Daftar proxy publik (IP:port) dari yang kamu berikan
+const PROXY_LIST = [
+  '138.68.60.8:80',
+  '52.188.28.218:3128',
+  '154.3.236.202:3128',
+  '20.210.113.32:8123',
+  '211.230.49.122:3128',
+  '91.98.232.106:10808',
+  '168.119.126.160:35856',
+  '91.107.160.34:5050',
+  '77.239.97.182:31994',
+  '161.35.70.249:8080',
+  '46.161.6.165:8080',
+  '88.99.69.237:5043',
+  '103.35.188.243:3128',
+  '62.113.119.14:8080',
+  '185.184.120.1:29320',
+  '193.221.203.121:4145',
+  '193.168.198.216:16777',
+  '198.199.86.11:3128',
+  '20.205.61.143:80',
+  '159.203.61.169:80',
+  '202.181.148.64:54101',
+  '193.221.203.121:1080',
+  '193.221.203.121:8888',
+  '134.209.29.120:3128',
+  '128.199.202.122:8080',
+  '139.162.78.109:80',
+  '135.181.107.134:41241',
+  '88.99.29.50:5132',
+  '91.107.157.68:20143',
+  '88.99.30.148:5051',
+  '193.221.203.121:8080',
+  '190.6.54.12:6969',
+  '192.145.31.160:8888',
+  '88.99.30.237:5061',
+  '195.201.2.238:56005',
+  '91.107.170.243:6825',
+  '43.225.151.30:20505',
+  '65.109.217.101:3534',
+  '77.233.212.4:57339',
+  '187.86.159.54:3128',
+  '85.192.56.4:48716',
+  '187.190.114.57:999',
+  '78.47.253.162:1083'
+];
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -175,6 +220,11 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
+// Fungsi untuk mengambil proxy secara acak
+function getRandomProxy() {
+  const randomIndex = Math.floor(Math.random() * PROXY_LIST.length);
+  return `http://${PROXY_LIST[randomIndex]}`;
+}
 // ============================================================================
 // TELEGRAM NOTIFIER (tidak berubah)
 // ============================================================================
@@ -900,9 +950,17 @@ async function generateQrispyQR(amount, paymentReference) {
   try {
     const token = (QRISPY_API_TOKEN || '').trim();
     if (!token) throw new Error('Token QRISPY kosong');
-    
-    const response = await fetch(`${config.QRISPY_API_TOKEN}/api/payment/qris/generate`, {
+
+    // Pilih proxy acak
+    const proxyUrl = getRandomProxy();
+    console.log(`Menggunakan proxy: ${proxyUrl}`);
+
+    // Buat agent dengan proxy tersebut
+    const agent = new HttpsProxyAgent(proxyUrl);
+
+    const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/generate`, {
       method: 'POST',
+      agent: agent,   // <-- kunci: menggunakan proxy
       headers: {
         'X-API-Token': token,
         'Content-Type': 'application/json',
