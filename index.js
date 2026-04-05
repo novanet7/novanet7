@@ -35,14 +35,37 @@ let octokit = null;
 let owner, repo;
 const sessionCache = new Map();
 
-// ==================== HELPER RENDER HTML ====================
+// ==================== HELPER RENDER HTML (DITINGKATKAN) ====================
 function renderHTML(fileName, replacements = {}) {
     const filePath = path.join(__dirname, 'public', fileName);
     let content = fs.readFileSync(filePath, 'utf8');
+    
+    // Proses kondisional {{#if variable}}...{{/if}}
+    const ifRegex = /{{#if\s+([\w.]+)}}([\s\S]*?){{\/if}}/g;
+    content = content.replace(ifRegex, (match, varName, inner) => {
+        const value = replacements[varName];
+        if (value && value !== 'false' && value !== '0' && value !== '') {
+            return inner;
+        }
+        return '';
+    });
+    
+    // Proses kondisional {{#unless variable}}...{{/unless}}
+    const unlessRegex = /{{#unless\s+([\w.]+)}}([\s\S]*?){{\/unless}}/g;
+    content = content.replace(unlessRegex, (match, varName, inner) => {
+        const value = replacements[varName];
+        if (!value || value === 'false' || value === '0' || value === '') {
+            return inner;
+        }
+        return '';
+    });
+    
+    // Proses penggantian variabel biasa {{variable}}
     for (const [key, value] of Object.entries(replacements)) {
         const regex = new RegExp(`{{${key}}}`, 'g');
         content = content.replace(regex, value);
     }
+    
     return content;
 }
 
@@ -229,10 +252,7 @@ async function readGitHubFile(filePath) {
     if (!octokit) throw new Error('GitHub tidak tersedia');
     try {
         const { data } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: filePath,
-            ref: GITHUB_BRANCH,
+            owner, repo, path: filePath, ref: GITHUB_BRANCH,
         });
         const content = Buffer.from(data.content, 'base64').toString();
         return { content: JSON.parse(content), sha: data.sha };
@@ -244,13 +264,9 @@ async function readGitHubFile(filePath) {
 async function writeGitHubFile(filePath, content, sha = null, message = 'Update file') {
     if (!octokit) throw new Error('GitHub tidak tersedia');
     await octokit.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path: filePath,
-        message,
+        owner, repo, path: filePath, message,
         content: Buffer.from(JSON.stringify(content, null, 2)).toString('base64'),
-        branch: GITHUB_BRANCH,
-        sha,
+        branch: GITHUB_BRANCH, sha,
     });
 }
 async function writeGitHubFileWithRetry(filePath, content, maxRetries = 3) {
@@ -493,7 +509,7 @@ async function findUserById(id) {
 }
 
 // ============================================================================
-// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS (TANPA FALLBACK)
+// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS
 // ============================================================================
 async function fetchRandomAvatarFromWaifu() {
     try {
@@ -612,17 +628,11 @@ async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
     const ext = fileName.split('.').pop().toLowerCase();
     const avatarPath = `avatars/${user.id}/avatar.${ext}`;
     await octokit.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path: avatarPath,
-        message: `Upload avatar for user ${user.id}`,
-        content: fileBuffer.toString('base64'),
-        branch: GITHUB_BRANCH
+        owner, repo, path: avatarPath, message: `Upload avatar for user ${user.id}`,
+        content: fileBuffer.toString('base64'), branch: GITHUB_BRANCH
     });
     try {
-        const { data } = await octokit.repos.getContent({
-            owner, repo, path: avatarPath, ref: GITHUB_BRANCH
-        });
+        const { data } = await octokit.repos.getContent({ owner, repo, path: avatarPath, ref: GITHUB_BRANCH });
         if (data && data.content) {
             console.log(`✅ Verifikasi avatar untuk user ${user.id} berhasil: ${avatarPath}`);
         } else {
@@ -638,22 +648,13 @@ async function deleteUserAvatar(userId) {
     if (!octokit) return;
     const folder = `avatars/${userId}`;
     try {
-        const { data: files } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: folder,
-            ref: GITHUB_BRANCH
-        }).catch(() => ({ data: null }));
+        const { data: files } = await octokit.repos.getContent({ owner, repo, path: folder, ref: GITHUB_BRANCH }).catch(() => ({ data: null }));
         if (files && Array.isArray(files)) {
             for (const file of files) {
                 if (file.type === 'file') {
                     await octokit.repos.deleteFile({
-                        owner,
-                        repo,
-                        path: file.path,
-                        message: `Delete avatar for user ${userId}`,
-                        sha: file.sha,
-                        branch: GITHUB_BRANCH
+                        owner, repo, path: file.path, message: `Delete avatar for user ${userId}`,
+                        sha: file.sha, branch: GITHUB_BRANCH
                     });
                 }
             }
@@ -720,10 +721,7 @@ async function findPterodactylUserByEmail(email) {
     try {
         const response = await fetch(`${config.DOMAIN}/api/application/users?filter[email]=${encodeURIComponent(email)}`, {
             method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${config.PLTA}`
-            }
+            headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${config.PLTA}` }
         });
         const data = await response.json();
         if (data.data && data.data.length > 0) {
@@ -741,30 +739,12 @@ async function createPterodactylUser(email, username, password) {
     try {
         const response = await fetch(`${config.DOMAIN}/api/application/users`, {
             method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.PLTA}`
-            },
-            body: JSON.stringify({
-                email: email,
-                username: username,
-                first_name: username,
-                last_name: 'User',
-                password: password
-            })
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.PLTA}` },
+            body: JSON.stringify({ email, username, first_name: username, last_name: 'User', password })
         });
         const data = await response.json();
-        if (data.errors) {
-            throw new Error(data.errors[0].detail || 'Gagal membuat user');
-        }
-        return {
-            success: true,
-            userId: data.attributes.id,
-            username: data.attributes.username,
-            email: data.attributes.email,
-            password: password
-        };
+        if (data.errors) throw new Error(data.errors[0].detail || 'Gagal membuat user');
+        return { success: true, userId: data.attributes.id, username: data.attributes.username, email: data.attributes.email, password };
     } catch (error) {
         console.error('Create Pterodactyl user error:', error);
         await sendTelegramError(error, { fungsi: 'createPterodactylUser', email, username });
@@ -806,59 +786,23 @@ async function createPterodactylServer(userId, panelType, username, email) {
         const serverName = `${username}`;
         const serverResponse = await fetch(`${config.DOMAIN}/api/application/servers`, {
             method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.PLTA}`
-            },
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.PLTA}` },
             body: JSON.stringify({
-                name: serverName,
-                description: description,
-                user: userId,
-                egg: parseInt(config.EGG),
+                name: serverName, description, user: userId, egg: parseInt(config.EGG),
                 docker_image: 'ghcr.io/parkervcp/yolks:nodejs_20',
                 startup: 'npm install && npm start',
-                environment: {
-                    INST: 'npm',
-                    USER_UPLOAD: '0',
-                    AUTO_UPDATE: '0',
-                    CMD_RUN: 'npm start'
-                },
-                limits: {
-                    memory: parseInt(ram),
-                    swap: 0,
-                    disk: parseInt(disk),
-                    io: 500,
-                    cpu: parseInt(cpu)
-                },
-                feature_limits: {
-                    databases: 5,
-                    backups: 5,
-                    allocations: 1
-                },
-                deploy: {
-                    locations: [parseInt(config.LOX)],
-                    dedicated_ip: false,
-                    port_range: []
-                }
+                environment: { INST: 'npm', USER_UPLOAD: '0', AUTO_UPDATE: '0', CMD_RUN: 'npm start' },
+                limits: { memory: parseInt(ram), swap: 0, disk: parseInt(disk), io: 500, cpu: parseInt(cpu) },
+                feature_limits: { databases: 5, backups: 5, allocations: 1 },
+                deploy: { locations: [parseInt(config.LOX)], dedicated_ip: false, port_range: [] }
             })
         });
         const serverData = await serverResponse.json();
-        if (serverData.errors) {
-            throw new Error(serverData.errors[0].detail || 'Gagal membuat server');
-        }
+        if (serverData.errors) throw new Error(serverData.errors[0].detail || 'Gagal membuat server');
         return {
-            success: true,
-            serverId: serverData.attributes.id,
-            identifier: serverData.attributes.identifier,
-            name: serverName,
-            description: description,
-            panelType: panelType,
-            ram: ram,
-            disk: disk,
-            cpu: cpu,
-            createdAt: new Date().toISOString(),
-            panelUrl: `${config.DOMAIN}`
+            success: true, serverId: serverData.attributes.id, identifier: serverData.attributes.identifier,
+            name: serverName, description, panelType, ram, disk, cpu,
+            createdAt: new Date().toISOString(), panelUrl: `${config.DOMAIN}`
         };
     } catch (error) {
         console.error('Create Pterodactyl server error:', error);
@@ -874,10 +818,7 @@ async function deletePterodactylServer(serverId) {
     try {
         const response = await fetch(`${config.DOMAIN}/api/application/servers/${serverId}`, {
             method: 'DELETE',
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${config.PLTA}`
-            }
+            headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${config.PLTA}` }
         });
         if (!response.ok) {
             const errorData = await response.json();
@@ -897,10 +838,7 @@ async function deletePterodactylServer(serverId) {
 async function generateQRIS(amount, paymentRef) {
     const response = await fetch('https://api.qrispy.id/api/payment/qris/generate', {
         method: 'POST',
-        headers: {
-            'X-API-Token': config.QRISPY_API_TOKEN,
-            'Content-Type': 'application/json'
-        },
+        headers: { 'X-API-Token': config.QRISPY_API_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount, payment_reference: paymentRef })
     });
     const data = await response.json();
@@ -909,7 +847,6 @@ async function generateQRIS(amount, paymentRef) {
     }
     return data;
 }
-
 async function checkQRISPaymentStatus(paymentRef) {
     const response = await fetch(`https://api.qrispy.id/api/payment/status?payment_reference=${encodeURIComponent(paymentRef)}`, {
         method: 'GET',
@@ -926,9 +863,7 @@ async function checkQRISPaymentStatus(paymentRef) {
 function generateRandomPassword(length = 8) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let password = '';
-    for (let i = 0; i < length; i++) {
-        password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    for (let i = 0; i < length; i++) password += chars.charAt(Math.floor(Math.random() * chars.length));
     return password;
 }
 function generateOrderId() {
@@ -936,12 +871,7 @@ function generateOrderId() {
 }
 function escapeHTML(text) {
     if (!text) return '';
-    return text.toString()
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+    return text.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 function getGravatarUrl(email, size = 200) {
     const hash = require('crypto').createHash('md5').update(email.trim().toLowerCase()).digest('hex');
@@ -949,7 +879,7 @@ function getGravatarUrl(email, size = 200) {
 }
 
 // ============================================================================
-// SETUP ROUTES (SEMUA ROUTE DENGAN HTML TERPISAH)
+// SETUP ROUTES
 // ============================================================================
 function setupRoutes(app) {
     // SITEMAP & ROBOTS
@@ -965,26 +895,14 @@ function setupRoutes(app) {
         ];
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${pages.map(page => `  <url>
-    <loc>${config.URL}${page.url}</loc>
-    <lastmod>${page.lastmod}</lastmod>
-    <changefreq>${page.changefreq}</changefreq>
-    <priority>${page.priority}</priority>
-  </url>`).join('\n')}
+${pages.map(page => `  <url>\n    <loc>${config.URL}${page.url}</loc>\n    <lastmod>${page.lastmod}</lastmod>\n    <changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>`).join('\n')}
 </urlset>`;
         res.header('Content-Type', 'application/xml');
         res.send(sitemap);
     });
-
     app.get('/robots.txt', (req, res) => {
         res.type('text/plain');
-        res.send(`# Robot rules for ${SITE_NAME}
-User-agent: *
-Allow: /
-Disallow: /api/
-Sitemap: ${config.URL}/sitemap.xml
-Crawl-delay: 1
-`);
+        res.send(`# Robot rules for ${SITE_NAME}\nUser-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${config.URL}/sitemap.xml\nCrawl-delay: 1\n`);
     });
 
     // HALAMAN PEMBAYARAN QRIS
@@ -992,31 +910,19 @@ Crawl-delay: 1
         const { orderId } = req.params;
         const order = await findOrderById(orderId);
         if (!order) return res.redirect('/?error=order_not_found');
-        if (order.status === 'paid') {
-            return res.redirect(`/profile?payment=success`);
-        }
+        if (order.status === 'paid') return res.redirect(`/profile?payment=success`);
         let qrisImage = order.qris_data?.image_base64 || order.qris_data?.image_url;
         if (!qrisImage) {
             try {
                 const qrisData = await generateQRIS(order.amount, orderId);
                 qrisImage = qrisData.data.qris_image_base64 || qrisData.data.qris_image_url;
-                await updateOrder(orderId, {
-                    qris_data: {
-                        image_url: qrisData.data.qris_image_url,
-                        image_base64: qrisData.data.qris_image_base64
-                    }
-                });
+                await updateOrder(orderId, { qris_data: { image_url: qrisData.data.qris_image_url, image_base64: qrisData.data.qris_image_base64 } });
             } catch (err) {
                 console.error(err);
                 return res.send(`<h2>Error</h2><p>Gagal memuat QRIS. Hubungi admin.</p><a href="/">Kembali</a>`);
             }
         }
-        const html = renderHTML('payment.html', {
-            SITE_NAME: SITE_NAME,
-            orderId: orderId,
-            amount: order.amount.toLocaleString('id-ID'),
-            qrisImage: qrisImage
-        });
+        const html = renderHTML('payment.html', { SITE_NAME, orderId, amount: order.amount.toLocaleString('id-ID'), qrisImage });
         res.send(html);
     });
 
@@ -1028,16 +934,11 @@ Crawl-delay: 1
             if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
             const email = req.user.email;
             const priceMap = {
-                '1gb': config.PRICE_1GB || 500,
-                '2gb': config.PRICE_2GB || 500,
-                '3gb': config.PRICE_3GB || 500,
-                '4gb': config.PRICE_4GB || 500,
-                '5gb': config.PRICE_5GB || 500,
-                '6gb': config.PRICE_6GB || 500,
-                '7gb': config.PRICE_7GB || 500,
-                '8gb': config.PRICE_8GB || 500,
-                '9gb': config.PRICE_9GB || 500,
-                '10gb': config.PRICE_10GB || 500,
+                '1gb': config.PRICE_1GB || 500, '2gb': config.PRICE_2GB || 500,
+                '3gb': config.PRICE_3GB || 500, '4gb': config.PRICE_4GB || 500,
+                '5gb': config.PRICE_5GB || 500, '6gb': config.PRICE_6GB || 500,
+                '7gb': config.PRICE_7GB || 500, '8gb': config.PRICE_8GB || 500,
+                '9gb': config.PRICE_9GB || 500, '10gb': config.PRICE_10GB || 500,
                 'unli': config.PRICE_UNLI || 500
             };
             const amount = priceMap[panelType] || 500;
@@ -1050,17 +951,9 @@ Crawl-delay: 1
                 return res.status(500).json({ success: false, message: 'Gagal membuat QRIS. Coba lagi nanti.' });
             }
             const order = {
-                order_id: orderId,
-                email: email,
-                panel_type: panelType,
-                amount: amount,
-                status: 'pending',
-                created_at: new Date().toISOString(),
-                panel_created: false,
-                qris_data: {
-                    image_url: qrisData.data.qris_image_url,
-                    image_base64: qrisData.data.qris_image_base64
-                }
+                order_id: orderId, email, panel_type: panelType, amount, status: 'pending',
+                created_at: new Date().toISOString(), panel_created: false,
+                qris_data: { image_url: qrisData.data.qris_image_url, image_base64: qrisData.data.qris_image_base64 }
             };
             await addOrder(order);
             res.json({ success: true, redirect_url: `/payment/${orderId}` });
@@ -1076,20 +969,11 @@ Crawl-delay: 1
         try {
             const { orderId } = req.params;
             const order = await findOrderById(orderId);
-            if (!order) {
-                return res.json({ success: false, status: 'not_found', message: 'Order tidak ditemukan' });
-            }
+            if (!order) return res.json({ success: false, status: 'not_found', message: 'Order tidak ditemukan' });
             const paymentStatus = await checkQRISPaymentStatus(orderId);
             const isPaid = paymentStatus.status === 'paid';
-            if (isPaid && order.status !== 'paid') {
-                await updateOrder(orderId, { status: 'paid' });
-            }
-            res.json({
-                success: true,
-                status: paymentStatus.status,
-                order_id: orderId,
-                transaction: paymentStatus
-            });
+            if (isPaid && order.status !== 'paid') await updateOrder(orderId, { status: 'paid' });
+            res.json({ success: true, status: paymentStatus.status, order_id: orderId, transaction: paymentStatus });
         } catch (error) {
             console.error('Check payment error:', error);
             await sendTelegramError(error, { route: '/api/check-payment', orderId });
@@ -1104,24 +988,17 @@ Crawl-delay: 1
             if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
             const order = await findOrderById(order_id);
             if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-            if (order.status !== 'paid') {
-                return res.status(400).json({ success: false, message: 'Pembayaran belum dikonfirmasi. Status: ' + order.status });
-            }
-            if (order.panel_created) {
-                return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
-            }
+            if (order.status !== 'paid') return res.status(400).json({ success: false, message: 'Pembayaran belum dikonfirmasi. Status: ' + order.status });
+            if (order.panel_created) return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
             const username = order.email.split('@')[0];
             const randomPassword = generateRandomPassword(8);
             const user = await findUserByEmail(order.email);
-            let pterodactylUserId = null;
-            let userResult = null;
+            let pterodactylUserId = null, userResult = null;
             const existingUser = await findPterodactylUserByEmail(order.email);
             if (existingUser.success) {
                 pterodactylUserId = existingUser.userId;
                 userResult = { success: true, userId: pterodactylUserId };
-                if (user && user.pterodactylUserId !== pterodactylUserId) {
-                    await updateUser(user.id, { pterodactylUserId });
-                }
+                if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
             } else {
                 userResult = await createPterodactylUser(order.email, username, randomPassword);
                 if (!userResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
@@ -1130,21 +1007,10 @@ Crawl-delay: 1
             }
             const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
             if (!panelResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat server' });
-            await updateOrder(order_id, {
-                panel_created: true,
-                panel_data: panelResult,
-                user_data: { email: order.email, username: username, password: randomPassword }
-            });
+            await updateOrder(order_id, { panel_created: true, panel_data: panelResult, user_data: { email: order.email, username, password: randomPassword } });
             if (user) {
                 const purchased = user.purchasedPanels || [];
-                purchased.push({
-                    order_id: order_id,
-                    panel_type: order.panel_type,
-                    panel_url: panelResult.panelUrl,
-                    username: username,
-                    password: randomPassword,
-                    created_at: new Date().toISOString()
-                });
+                purchased.push({ order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username, password: randomPassword, created_at: new Date().toISOString() });
                 await updateUser(user.id, { purchasedPanels: purchased });
             }
             // Notifikasi Telegram
@@ -1156,30 +1022,14 @@ Crawl-delay: 1
             const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
             const timeStr = formatterTime.format(now);
             const formattedTime = `${dayName}, ${dateStr} ${timeStr}`;
-            const ownerMsg = `🎉 <b>PANEL BARU DIBUAT</b> 🎉\n\n` +
-                `📅 <b>Waktu</b> : ${formattedTime}\n` +
-                `📧 <b>Email</b> : <code>${order.email}</code>\n` +
-                `👤 <b>Username</b> : <code>${username}</code>\n` +
-                `📦 <b>Tipe Panel</b> : ${order.panel_type.toUpperCase()}\n` +
-                `💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n` +
-                `🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n` +
-                `🏷️ <b>Nama Server</b> : ${panelResult.name}`;
+            const ownerMsg = `🎉 <b>PANEL BARU DIBUAT</b> 🎉\n\n📅 <b>Waktu</b> : ${formattedTime}\n📧 <b>Email</b> : <code>${order.email}</code>\n👤 <b>Username</b> : <code>${username}</code>\n📦 <b>Tipe Panel</b> : ${order.panel_type.toUpperCase()}\n💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n🏷️ <b>Nama Server</b> : ${panelResult.name}`;
             try {
                 await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: config.OWNER_ID,
-                        text: ownerMsg,
-                        parse_mode: 'HTML',
-                        disable_web_page_preview: true,
-                        reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] }
-                    })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: config.OWNER_ID, text: ownerMsg, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] } })
                 });
-            } catch (telegramError) {
-                console.error('Telegram notification failed:', telegramError);
-            }
-            res.json({ success: true, panel: panelResult, user: { email: order.email, username: username }, message: 'Panel berhasil dibuat!' });
+            } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
+            res.json({ success: true, panel: panelResult, user: { email: order.email, username }, message: 'Panel berhasil dibuat!' });
         } catch (error) {
             console.error('Create panel error:', error);
             await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
@@ -1187,17 +1037,38 @@ Crawl-delay: 1
         }
     });
 
-    // ==========================================================================
-    // ROUTE REFUND dan CANCEL dinonaktifkan sementara (butuh integrasi QRISPY)
-    // ==========================================================================
+    // API REFUND ORDER (USER)
     app.post('/api/refund-order', isAuthenticated, async (req, res) => {
-        return res.status(501).json({ success: false, message: 'Fitur refund sedang dalam pengembangan untuk sistem pembayaran baru.' });
-    });
-    app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
-        return res.status(501).json({ success: false, message: 'Fitur cancel order sedang dalam pengembangan untuk sistem pembayaran baru.' });
+        try {
+            const { order_id, dana_number, dana_name, reason } = req.body;
+            if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
+            const order = await findOrderById(order_id);
+            if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
+            if (order.status !== 'paid') return res.status(400).json({ success: false, message: 'Hanya order yang sudah dibayar yang dapat direfund.' });
+            const existingRequest = await findRefundRequest(order_id);
+            if (existingRequest) return res.status(400).json({ success: false, message: 'Permintaan refund sudah pernah diajukan dan sedang diproses.' });
+            if (!dana_number || !dana_name) return res.status(400).json({ success: false, message: 'Nomor Dana dan Nama Akun Dana harus diisi.' });
+            await addRefundRequest(order, { dana_number, dana_name, reason: reason || '' });
+            // Notifikasi Telegram ke admin
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('id-ID', { dateStyle: 'full', timeStyle: 'long', timeZone: 'Asia/Jakarta' });
+            const waktu = formatter.format(now);
+            const refundMsg = `🔄 <b>PERMINTAAN REFUND BARU</b> 🔄\n\n🆔 Order ID: <code>${order.order_id}</code>\n📧 Email: <code>${order.email}</code>\n📦 Paket: ${order.panel_type.toUpperCase()}\n💰 Jumlah: Rp ${order.amount.toLocaleString('id-ID')}\n📱 Nomor Dana: <code>${dana_number}</code>\n👤 Nama Dana: ${escapeHTML(dana_name)}\n📝 Alasan: ${escapeHTML(reason) || '-'}\n⏰ Waktu: ${waktu}\n\nSegera proses di dashboard admin.`;
+            try {
+                await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: config.OWNER_ID, text: refundMsg, parse_mode: 'HTML' })
+                });
+            } catch (teleErr) { console.error('Gagal kirim notifikasi refund ke Telegram:', teleErr); }
+            res.json({ success: true, message: 'Permintaan refund telah dikirim. Menunggu persetujuan admin.' });
+        } catch (error) {
+            console.error('Refund order error:', error);
+            await sendTelegramError(error, { route: '/api/refund-order', body: req.body });
+            res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        }
     });
 
-    // API APPROVE REFUND (ADMIN) - masih berfungsi untuk refund request yang tersimpan
+    // API APPROVE REFUND (ADMIN)
     app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
         try {
             const { order_id } = req.body;
@@ -1210,18 +1081,18 @@ Crawl-delay: 1
                 return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
             }
             let serverDeleted = true;
+            let serverMessage = '';
             if (order.panel_created && order.panel_data && order.panel_data.serverId) {
                 const deleteResult = await deletePterodactylServer(order.panel_data.serverId);
-                if (!deleteResult.success) serverDeleted = false;
-            }
+                if (!deleteResult.success) { serverDeleted = false; serverMessage = deleteResult.error; }
+            } else if (!order.panel_created) { serverMessage = 'Panel belum pernah dibuat, tidak perlu dihapus.'; }
             const activeOrders = await getOrders();
             const newActive = activeOrders.filter(o => o.order_id !== order_id);
             await saveOrders(newActive);
             const cancelledOrders = await getCancelledOrders();
             cancelledOrders.push({
-                ...order, status: 'refunded', cancelled_at: new Date().toISOString(),
-                refunded_at: new Date().toISOString(), server_deleted: serverDeleted,
-                refund_data: { dana_number: refundRequest.dana_number, dana_name: refundRequest.dana_name, reason: refundRequest.reason }
+                ...order, status: 'refunded', cancelled_at: new Date().toISOString(), refunded_at: new Date().toISOString(),
+                server_deleted: serverDeleted, refund_data: { dana_number: refundRequest.dana_number, dana_name: refundRequest.dana_name, reason: refundRequest.reason }
             });
             await saveCancelledOrders(cancelledOrders);
             const user = await findUserByEmail(order.email);
@@ -1230,12 +1101,28 @@ Crawl-delay: 1
                 await updateUser(user.id, { purchasedPanels: updatedPurchased });
             }
             await removeRefundRequest(order_id);
-            res.json({ success: true, message: serverDeleted ? 'Refund berhasil diproses, server telah dihapus' : 'Refund berhasil diproses, namun server gagal dihapus. Silakan cek manual.' });
+            // Notifikasi Telegram ke admin
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('id-ID', { dateStyle: 'full', timeStyle: 'long', timeZone: 'Asia/Jakarta' });
+            const waktu = formatter.format(now);
+            const approveMsg = `✅ <b>REFUND DISETUJUI</b> ✅\n\n🆔 Order ID: <code>${order.order_id}</code>\n📧 Email: <code>${order.email}</code>\n📦 Paket: ${order.panel_type.toUpperCase()}\n💰 Jumlah: Rp ${order.amount.toLocaleString('id-ID')}\n📱 Nomor Dana: <code>${refundRequest.dana_number}</code>\n👤 Nama Dana: ${escapeHTML(refundRequest.dana_name)}\n📝 Alasan: ${escapeHTML(refundRequest.reason) || '-'}\n🗑️ Server dihapus: ${serverDeleted ? 'Ya' : 'Tidak (' + serverMessage + ')'}\n⏰ Waktu: ${waktu}`;
+            try {
+                await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: config.OWNER_ID, text: approveMsg, parse_mode: 'HTML' })
+                });
+            } catch (teleErr) { console.error('Gagal kirim notifikasi approve refund ke Telegram:', teleErr); }
+            res.json({ success: true, message: serverDeleted ? 'Refund berhasil diproses, server telah dihapus.' : `Refund berhasil diproses, namun server gagal dihapus: ${serverMessage}` });
         } catch (error) {
             console.error('Approve refund error:', error);
             await sendTelegramError(error, { route: '/api/approve-refund', body: req.body });
             res.status(500).json({ success: false, message: error.message || 'Internal server error' });
         }
+    });
+
+    // API CANCEL ORDER (ADMIN) - nonaktif sementara
+    app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
+        return res.status(501).json({ success: false, message: 'Fitur cancel order sedang dalam pengembangan untuk sistem pembayaran baru.' });
     });
 
     // API STATUS
@@ -1247,14 +1134,9 @@ Crawl-delay: 1
     app.get('/api/avatar/:userId', isAuthenticated, async (req, res) => {
         const { userId } = req.params;
         const currentUser = req.user;
-        if (currentUser.id !== parseInt(userId) && currentUser.email !== config.ADMIN_EMAIL) {
-            return res.status(403).send('Forbidden');
-        }
+        if (currentUser.id !== parseInt(userId) && currentUser.email !== config.ADMIN_EMAIL) return res.status(403).send('Forbidden');
         const user = await findUserById(parseInt(userId));
-        if (!user || !user.photo) {
-            const email = user ? user.email : '';
-            return res.redirect(getGravatarUrl(email, 200));
-        }
+        if (!user || !user.photo) return res.redirect(getGravatarUrl(user ? user.email : '', 200));
         try {
             const { data } = await octokit.repos.getContent({ owner, repo, path: user.photo, ref: GITHUB_BRANCH });
             const fileBuffer = Buffer.from(data.content, 'base64');
@@ -1276,30 +1158,15 @@ Crawl-delay: 1
     app.get('/login', (req, res) => {
         if (req.isAuthenticated()) return res.redirect('/profile');
         const error = req.flash('error')[0] || '';
-        const html = renderHTML('login.html', {
-            SITE_NAME: SITE_NAME,
-            FAVICON: config.FAVICON,
-            URL: config.URL,
-            csrfToken: req.csrfToken(),
-            errorMessage: error ? escapeHTML(error) : ''
-        });
+        const html = renderHTML('login.html', { SITE_NAME, FAVICON: config.FAVICON, URL: config.URL, csrfToken: req.csrfToken(), errorMessage: error ? escapeHTML(error) : '' });
         res.send(html);
     });
     app.post('/login', (req, res, next) => {
         passport.authenticate('local', (err, user, info) => {
-            if (err) {
-                req.flash('error', 'Terjadi kesalahan sistem');
-                return res.redirect('/login');
-            }
-            if (!user) {
-                req.flash('error', info.message || 'Email atau password salah');
-                return res.redirect('/login');
-            }
+            if (err) { req.flash('error', 'Terjadi kesalahan sistem'); return res.redirect('/login'); }
+            if (!user) { req.flash('error', info.message || 'Email atau password salah'); return res.redirect('/login'); }
             req.logIn(user, (err) => {
-                if (err) {
-                    req.flash('error', 'Gagal membuat sesi login');
-                    return res.redirect('/login');
-                }
+                if (err) { req.flash('error', 'Gagal membuat sesi login'); return res.redirect('/login'); }
                 return res.redirect('/profile');
             });
         })(req, res, next);
@@ -1310,46 +1177,21 @@ Crawl-delay: 1
         if (req.isAuthenticated()) return res.redirect('/profile');
         const error = req.flash('error')[0] || '';
         const rateLimitMessage = req.flash('rateLimit')[0] || '';
-        const html = renderHTML('register.html', {
-            SITE_NAME: SITE_NAME,
-            FAVICON: config.FAVICON,
-            URL: config.URL,
-            csrfToken: req.csrfToken(),
-            errorMessage: escapeHTML(error || rateLimitMessage),
-            TURNSTILE_SITE_KEY: config.TURNSTILE_SITE_KEY
-        });
+        const html = renderHTML('register.html', { SITE_NAME, FAVICON: config.FAVICON, URL: config.URL, csrfToken: req.csrfToken(), errorMessage: escapeHTML(error || rateLimitMessage), TURNSTILE_SITE_KEY: config.TURNSTILE_SITE_KEY });
         res.send(html);
     });
     app.post('/register', async (req, res) => {
         const clientIp = req.ip || req.connection.remoteAddress;
-        if (await isRegisterBlocked(clientIp)) {
-            req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
-            return res.redirect('/register');
-        }
+        if (await isRegisterBlocked(clientIp)) { req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.'); return res.redirect('/register'); }
         const attempt = await registerAttempt(clientIp);
-        if (attempt.blocked) {
-            req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
-            return res.redirect('/register');
-        }
+        if (attempt.blocked) { req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.'); return res.redirect('/register'); }
         const { name, email, password } = req.body;
-        if (!name || !email || !password) {
-            req.flash('error', 'Semua field harus diisi');
-            return res.redirect('/register');
-        }
-        if (password.length < 6) {
-            req.flash('error', 'Password minimal 6 karakter');
-            return res.redirect('/register');
-        }
-        if (!email.endsWith('@gmail.com')) {
-            req.flash('error', 'Email harus menggunakan domain @gmail.com');
-            return res.redirect('/register');
-        }
+        if (!name || !email || !password) { req.flash('error', 'Semua field harus diisi'); return res.redirect('/register'); }
+        if (password.length < 6) { req.flash('error', 'Password minimal 6 karakter'); return res.redirect('/register'); }
+        if (!email.endsWith('@gmail.com')) { req.flash('error', 'Email harus menggunakan domain @gmail.com'); return res.redirect('/register'); }
         try {
             const existing = await findUserByEmail(email);
-            if (existing) {
-                req.flash('error', 'Email sudah digunakan');
-                return res.redirect('/register');
-            }
+            if (existing) { req.flash('error', 'Email sudah digunakan'); return res.redirect('/register'); }
             const hashedPassword = await bcrypt.hash(password, 10);
             await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
             await clearRegisterAttempts(clientIp);
@@ -1363,10 +1205,7 @@ Crawl-delay: 1
             res.redirect('/register');
         }
     });
-
-    app.get('/logout', (req, res) => {
-        req.logout((err) => { if (err) console.error(err); res.redirect('/'); });
-    });
+    app.get('/logout', (req, res) => { req.logout((err) => { if (err) console.error(err); res.redirect('/'); }); });
 
     // GOOGLE OAUTH
     app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -1412,18 +1251,10 @@ Crawl-delay: 1
         }
         if (!panelsHtml) panelsHtml = '<p style="color:#aaa; text-align:center;">Belum ada pembelian panel.</p>';
         const html = renderHTML('profile.html', {
-            SITE_NAME: SITE_NAME,
-            VERSI_WEB: config.VERSI_WEB,
-            DEVELOPER: config.DEVELOPER,
-            photoUrl: photoUrl,
-            userName: escapeHTML(user.name),
-            userId: user.id,
-            userBio: escapeHTML(user.bio || 'Belum ada bio.'),
-            totalPanels: totalPanels,
-            totalSpentFormatted: totalSpent.toLocaleString('id-ID'),
-            csrfToken: req.csrfToken(),
-            panelsHtml: panelsHtml,
-            adminPanelLink: (user.email === config.ADMIN_EMAIL) ? '<a href="/admin"><i class="fas fa-chart-line"></i> Admin Panel</a>' : ''
+            SITE_NAME, VERSI_WEB: config.VERSI_WEB, DEVELOPER: config.DEVELOPER, photoUrl,
+            userName: escapeHTML(user.name), userId: user.id, userBio: escapeHTML(user.bio || 'Belum ada bio.'),
+            totalPanels, totalSpentFormatted: totalSpent.toLocaleString('id-ID'), csrfToken: req.csrfToken(),
+            panelsHtml, adminPanelLink: (user.email === config.ADMIN_EMAIL) ? '<a href="/admin"><i class="fas fa-chart-line"></i> Admin Panel</a>' : ''
         });
         res.send(html);
     });
@@ -1435,42 +1266,27 @@ Crawl-delay: 1
             try {
                 await deleteUserAvatar(req.user.id);
                 photoPath = await uploadAvatarToGitHub(req.user, req.file.buffer, req.file.originalname, req.file.mimetype);
-            } catch (err) {
-                return res.status(500).json({ error: 'Gagal upload foto: ' + err.message });
-            }
+            } catch (err) { return res.status(500).json({ error: 'Gagal upload foto: ' + err.message }); }
         }
         try {
             await updateUser(req.user.id, { name, bio, photo: photoPath });
             res.json({ success: true });
-        } catch (err) {
-            console.error(err);
-            res.status(500).json({ error: 'Gagal menyimpan profil' });
-        }
+        } catch (err) { console.error(err); res.status(500).json({ error: 'Gagal menyimpan profil' }); }
     });
 
     // DELETE ACCOUNT
     app.get('/delete-account', isAuthenticated, async (req, res) => {
-        const html = renderHTML('delete-account.html', {
-            SITE_NAME: SITE_NAME,
-            csrfToken: req.csrfToken(),
-            userName: escapeHTML(req.user.name)
-        });
+        const html = renderHTML('delete-account.html', { SITE_NAME, csrfToken: req.csrfToken(), userName: escapeHTML(req.user.name) });
         res.send(html);
     });
     app.post('/delete-account', isAuthenticated, async (req, res) => {
         const { confirmUsername } = req.body;
         const user = req.user;
-        if (confirmUsername !== user.name) {
-            req.flash('error', 'Username tidak cocok. Penghapusan akun dibatalkan.');
-            return res.redirect('/delete-account');
-        }
+        if (confirmUsername !== user.name) { req.flash('error', 'Username tidak cocok. Penghapusan akun dibatalkan.'); return res.redirect('/delete-account'); }
         try {
             const userId = user.id;
             await deleteUserById(userId);
-            req.logout((err) => {
-                if (err) console.error(err);
-                res.redirect('/?account_deleted=1');
-            });
+            req.logout((err) => { if (err) console.error(err); res.redirect('/?account_deleted=1'); });
         } catch (error) {
             console.error('Delete account error:', error);
             await sendTelegramError(error, { route: '/delete-account', userId: req.user.id });
@@ -1499,46 +1315,13 @@ Crawl-delay: 1
             const purchasedCount = userOrders.filter(o => o.panel_created === true && o.status === 'paid').length;
             const pendingCount = userOrders.filter(o => o.status === 'pending').length;
             const cancelCount = userOrders.filter(o => o.status === 'cancel' || o.status === 'refunded').length;
-            userData.push({
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                joined: new Date(user.createdAt).toLocaleDateString('id-ID'),
-                photo: user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 50),
-                bio: user.bio || 'Tidak ada bio',
-                purchasedCount,
-                pendingCount,
-                cancelCount
-            });
+            userData.push({ id: user.id, name: user.name, email: user.email, joined: new Date(user.createdAt).toLocaleDateString('id-ID'), photo: user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 50), bio: user.bio || 'Tidak ada bio', purchasedCount, pendingCount, cancelCount });
         }
         userData.sort((a, b) => new Date(b.joined) - new Date(a.joined));
-        const refundsData = refundRequests.map(r => ({
-            order_id: r.order_id,
-            email: r.email,
-            panel_type: r.panel_type,
-            amount: r.amount,
-            requested_at: r.requested_at
-        }));
-        const ordersData = sortedOrders.slice(0, 100).map(o => ({
-            order_id: o.order_id,
-            email: o.email,
-            panel_type: o.panel_type,
-            amount: o.amount,
-            status: o.status,
-            created_at: o.created_at
-        }));
-        const adminData = {
-            totalUsers, totalOrders, totalRevenue, totalLoss, pendingRefunds,
-            refundRequests: refundsData, userData, sortedOrders: ordersData
-        };
-        const html = renderHTML('admin.html', {
-            SITE_NAME: SITE_NAME,
-            DEVELOPER: config.DEVELOPER,
-            VERSI_WEB: config.VERSI_WEB,
-            adminAvatar: req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50),
-            adminName: escapeHTML(req.user.name),
-            adminData: JSON.stringify(adminData)
-        });
+        const refundsData = refundRequests.map(r => ({ order_id: r.order_id, email: r.email, panel_type: r.panel_type, amount: r.amount, requested_at: r.requested_at }));
+        const ordersData = sortedOrders.slice(0, 100).map(o => ({ order_id: o.order_id, email: o.email, panel_type: o.panel_type, amount: o.amount, status: o.status, created_at: o.created_at }));
+        const adminData = { totalUsers, totalOrders, totalRevenue, totalLoss, pendingRefunds, refundRequests: refundsData, userData, sortedOrders: ordersData };
+        const html = renderHTML('admin.html', { SITE_NAME, DEVELOPER: config.DEVELOPER, VERSI_WEB: config.VERSI_WEB, adminAvatar: req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50), adminName: escapeHTML(req.user.name), adminData: JSON.stringify(adminData) });
         res.send(html);
     });
 
@@ -1553,8 +1336,7 @@ Crawl-delay: 1
         const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
         let totalPurchases = 0;
         if (user) {
-            totalPurchases = orders.filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-                .reduce((sum, o) => sum + o.amount, 0);
+            totalPurchases = orders.filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid').reduce((sum, o) => sum + o.amount, 0);
         }
         const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
         const telegramUsername = (config.DEVELOPER || '').replace('@', '');
@@ -1572,27 +1354,16 @@ Crawl-delay: 1
             { type: 'unli', ram: 'Unlimited', disk: 'Unlimited', cpu: 'Unlimited', price: config.PRICE_UNLI || 500 }
         ];
         const html = renderHTML('index.html', {
-            SITE_NAME: SITE_NAME,
-            VERSI_WEB: config.VERSI_WEB,
-            DEVELOPER: config.DEVELOPER,
-            FAVICON: config.FAVICON,
-            URL: config.URL,
-            GOOGLE_VERIF: config.GOOGLE_VERIF || '',
-            whatsappNumber: whatsappNumber,
-            telegramUsername: telegramUsername,
-            totalUsers: totalUsers,
-            isLoggedIn: isLoggedIn,
-            photoUrl: photoUrl,
-            safeName: safeName,
-            totalPurchasesFormatted: totalPurchases.toLocaleString('id-ID'),
-            panelDataJSON: JSON.stringify(panelData)
+            SITE_NAME, VERSI_WEB: config.VERSI_WEB, DEVELOPER: config.DEVELOPER, FAVICON: config.FAVICON, URL: config.URL,
+            GOOGLE_VERIF: config.GOOGLE_VERIF || '', whatsappNumber, telegramUsername, totalUsers, isLoggedIn, photoUrl,
+            safeName, totalPurchasesFormatted: totalPurchases.toLocaleString('id-ID'), panelDataJSON: JSON.stringify(panelData)
         });
         res.send(html);
     });
 
     // 404
     app.use((req, res) => {
-        const html = renderHTML('404.html', { SITE_NAME: SITE_NAME });
+        const html = renderHTML('404.html', { SITE_NAME });
         res.status(404).send(html);
     });
 }
@@ -1679,11 +1450,7 @@ async function startServer() {
                     const email = profile._json.email;
                     let user = await findUserByEmail(email);
                     if (!user) {
-                        const newUser = {
-                            email, name: profile.displayName || email.split('@')[0], password: null,
-                            bio: '', photo: '', googleId: profile.id,
-                            createdAt: new Date().toISOString(), purchasedPanels: [], pterodactylUserId: null
-                        };
+                        const newUser = { email, name: profile.displayName || email.split('@')[0], password: null, bio: '', photo: '', googleId: profile.id, createdAt: new Date().toISOString(), purchasedPanels: [], pterodactylUserId: null };
                         user = await createUser(newUser);
                     } else if (!user.googleId) {
                         user.googleId = profile.id;
