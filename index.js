@@ -901,7 +901,7 @@ async function generateQrispyQR(amount, paymentReference) {
     const token = (QRISPY_API_TOKEN || '').trim();
     if (!token) throw new Error('Token QRISPY kosong');
     
-    const response = await fetch(`${QRISPY_API_TOKEN}/api/payment/qris/generate`, {
+    const response = await fetch(`${config.QRISPY_API_TOKEN}/api/payment/qris/generate`, {
       method: 'POST',
       headers: {
         'X-API-Token': token,
