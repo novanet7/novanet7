@@ -912,58 +912,32 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI CEK STATUS PAKASIR
+// QRISPY INTEGRATION
 // ============================================================================
-async function checkPaymentStatus(orderId, amount) {
-  try {
-    const detailUrl = `https://app.pakasir.com/api/transactiondetail?project=${encodeURIComponent(config.PAKASIR_PROJECT)}&amount=${amount}&order_id=${encodeURIComponent(orderId)}&api_key=${encodeURIComponent(config.PAKASIR_API_KEY)}`;
-    const response = await fetch(detailUrl);
-    const data = await response.json();
-    const transaction = data.transaction || {};
-    let status = transaction.status || '';
-    if (typeof status === 'string') {
-      status = status.toLowerCase();
-      if (status === 'completed') status = 'paid';
-    }
-    return {
-      success: true,
-      status: status,
-      transaction: transaction,
-      raw: data
-    };
-  } catch (error) {
-    console.error('Check payment status error:', error);
-    await sendTelegramError(error, { fungsi: 'checkPaymentStatus', orderId, amount });
-    return { success: false, status: 'error' };
-  }
-}
-
-// ============================================================================
-// CANCEL / REFUND ORDER (SESUAI STATUS)
-// ============================================================================
-async function cancelPakasirTransaction(orderId, amount) {
-  try {
-    const cancelUrl = 'https://app.pakasir.com/api/transactioncancel';
-    const response = await fetch(cancelUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project: config.PAKASIR_PROJECT,
-        order_id: orderId,
-        amount: amount,
-        api_key: config.PAKASIR_API_KEY
-      })
+async function generateQRIS(amount, paymentRef) {
+    const response = await fetch('https://api.qrispy.id/api/payment/qris/generate', {
+        method: 'POST',
+        headers: {
+            'X-API-Token': config.QRISPY_API_TOKEN,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ amount, payment_reference: paymentRef })
     });
     const data = await response.json();
     if (!response.ok || data.status !== 'success') {
-      throw new Error(data.message || 'Gagal membatalkan transaksi');
+        throw new Error(data.message || 'Gagal generate QRIS');
     }
-    return { success: true, data };
-  } catch (error) {
-    console.error('Cancel transaction error:', error);
-    await sendTelegramError(error, { fungsi: 'cancelPakasirTransaction', orderId, amount });
-    return { success: false, error: error.message };
-  }
+    return data; // { status, data: { qris_image_url, qris_image_base64, payment_reference } }
+}
+
+async function checkQRISPaymentStatus(paymentRef) {
+    const response = await fetch(`https://api.qrispy.id/api/payment/status?payment_reference=${encodeURIComponent(paymentRef)}`, {
+        method: 'GET',
+        headers: { 'X-API-Token': config.QRISPY_API_TOKEN }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Gagal cek status');
+    return data; // { status: 'pending' | 'paid' | 'expired' | 'failed' }
 }
 
 // ============================================================================
@@ -1036,100 +1010,224 @@ Crawl-delay: 1
 `);
   });
 
-  // ==========================================================================
-  // API ROUTES
-  // ==========================================================================
-  app.post('/api/create-order', isAuthenticated, async (req, res) => {
-    try {
-      const { panel_type, paneltype } = req.body;
-      const panelType = panel_type || paneltype;
-      if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
-      const email = req.user.email;
-      const priceMap = {
-        '1gb': config.PRICE_1GB || 500,
-        '2gb': config.PRICE_2GB || 500,
-        '3gb': config.PRICE_3GB || 500,
-        '4gb': config.PRICE_4GB || 500,
-        '5gb': config.PRICE_5GB || 500,
-        '6gb': config.PRICE_6GB || 500,
-        '7gb': config.PRICE_7GB || 500,
-        '8gb': config.PRICE_8GB || 500,
-        '9gb': config.PRICE_9GB || 500,
-        '10gb': config.PRICE_10GB || 500,
-        'unli': config.PRICE_UNLI || 500
-      };
-      const amount = priceMap[panelType] || 500;
-      const orderId = generateOrderId();
-      const redirectUrl = `${config.URL}/payment-callback?order_id=${orderId}&amount=${amount}`;
-      const paymentUrl = `https://app.pakasir.com/pay/${config.PAKASIR_PROJECT}/${amount}?order_id=${orderId}&redirect=${encodeURIComponent(redirectUrl)}&qris_only=1`;
-      const order = { order_id: orderId, email: email, panel_type: panelType, amount: amount, status: 'pending', created_at: new Date().toISOString(), panel_created: false };
-      await addOrder(order);
-      res.json({ success: true, payment_url: paymentUrl, order_id: orderId });
-    } catch (error) {
-      console.error('Create order error:', error);
-      await sendTelegramError(error, { route: '/api/create-order', body: req.body });
-      res.status(500).json({ success: false, message: 'Internal server error' });
+// ==========================================================================
+// HALAMAN PEMBAYARAN QRIS
+// ==========================================================================
+app.get('/payment/:orderId', async (req, res) => {
+    const { orderId } = req.params;
+    const order = await findOrderById(orderId);
+    if (!order) return res.redirect('/?error=order_not_found');
+    if (order.status === 'paid') {
+        return res.redirect(`/profile?payment=success`);
     }
-  });
 
-  app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
-    try {
-      const { orderId, amount } = req.params;
-      const paymentStatus = await checkPaymentStatus(orderId, parseInt(amount));
-      const order = await findOrderById(orderId);
-      if (order && paymentStatus.success) await updateOrder(orderId, { status: paymentStatus.status });
-      res.json({ success: true, status: paymentStatus.status, order_id: orderId, transaction: paymentStatus.transaction });
-    } catch (error) {
-      console.error('Check payment error:', error);
-      await sendTelegramError(error, { route: '/api/check-payment', orderId, amount });
-      res.status(500).json({ success: false, message: 'Internal server error' });
+    let qrisImage = order.qris_data?.image_base64 || order.qris_data?.image_url;
+    if (!qrisImage) {
+        try {
+            const qrisData = await generateQRIS(order.amount, orderId);
+            qrisImage = qrisData.data.qris_image_base64 || qrisData.data.qris_image_url;
+            await updateOrder(orderId, {
+                qris_data: {
+                    image_url: qrisData.data.qris_image_url,
+                    image_base64: qrisData.data.qris_image_base64
+                }
+            });
+        } catch (err) {
+            console.error(err);
+            return res.send(`<h2>Error</h2><p>Gagal memuat QRIS. Hubungi admin.</p><a href="/">Kembali</a>`);
+        }
     }
-  });
 
-  app.post('/api/create-panel', async (req, res) => {
+    const html = renderHTML('payment.html', {
+        SITE_NAME: SITE_NAME,
+        orderId: orderId,
+        amount: order.amount.toLocaleString('id-ID'),
+        qrisImage: qrisImage
+    });
+    res.send(html);
+});
+
+app.post('/api/create-order', isAuthenticated, async (req, res) => {
     try {
-      const { order_id } = req.body;
-      if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      const order = await findOrderById(order_id);
-      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      const paymentStatus = await checkPaymentStatus(order_id, order.amount);
-      const paidStatuses = ['paid', 'completed'];
-      if (!paidStatuses.includes(paymentStatus.status)) return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil. Status: ' + paymentStatus.status });
-      if (order.panel_created) return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
-      const username = order.email.split('@')[0];
-      const randomPassword = generateRandomPassword(8);
-      const user = await findUserByEmail(order.email);
-      let pterodactylUserId = null;
-      let userResult = null;
-      const existingUser = await findPterodactylUserByEmail(order.email);
-      if (existingUser.success) {
-        pterodactylUserId = existingUser.userId;
-        userResult = { success: true, userId: pterodactylUserId };
-        if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
-      } else {
-        userResult = await createPterodactylUser(order.email, username, randomPassword);
-        if (!userResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
-        pterodactylUserId = userResult.userId;
-        if (user) await updateUser(user.id, { pterodactylUserId });
-      }
-      const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
-      if (!panelResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat server' });
-      await updateOrder(order_id, { panel_created: true, status: 'paid', panel_data: panelResult, user_data: { email: order.email, username: username, password: randomPassword } });
-      if (user) {
-        const purchased = user.purchasedPanels || [];
-        purchased.push({ order_id: order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username: username, created_at: new Date().toISOString() });
-        await updateUser(user.id, { purchasedPanels: purchased });
-      }
-      res.json({ success: true, panel: panelResult, user: { email: order.email, username: username }, message: 'Panel berhasil dibuat!' });
+        const { panel_type, paneltype } = req.body;
+        const panelType = panel_type || paneltype;
+        if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
+        
+        const email = req.user.email;
+        const priceMap = {
+            '1gb': config.PRICE_1GB || 500,
+            '2gb': config.PRICE_2GB || 500,
+            '3gb': config.PRICE_3GB || 500,
+            '4gb': config.PRICE_4GB || 500,
+            '5gb': config.PRICE_5GB || 500,
+            '6gb': config.PRICE_6GB || 500,
+            '7gb': config.PRICE_7GB || 500,
+            '8gb': config.PRICE_8GB || 500,
+            '9gb': config.PRICE_9GB || 500,
+            '10gb': config.PRICE_10GB || 500,
+            'unli': config.PRICE_UNLI || 500
+        };
+        const amount = priceMap[panelType] || 500;
+        const orderId = generateOrderId();
+
+        // Generate QRIS
+        let qrisData;
+        try {
+            qrisData = await generateQRIS(amount, orderId);
+        } catch (qrError) {
+            console.error('QRIS generation failed:', qrError);
+            return res.status(500).json({ success: false, message: 'Gagal membuat QRIS. Coba lagi nanti.' });
+        }
+
+        // Simpan order
+        const order = {
+            order_id: orderId,
+            email: email,
+            panel_type: panelType,
+            amount: amount,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            panel_created: false,
+            qris_data: {
+                image_url: qrisData.data.qris_image_url,
+                image_base64: qrisData.data.qris_image_base64
+            }
+        };
+        await addOrder(order);
+
+        res.json({ success: true, redirect_url: `/payment/${orderId}` });
     } catch (error) {
-      console.error('Create panel error:', error);
-      await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
-      res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+        console.error('Create order error:', error);
+        await sendTelegramError(error, { route: '/api/create-order', body: req.body });
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
-  });
+});
+
+app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const order = await findOrderById(orderId);
+        if (!order) {
+            return res.json({ success: false, status: 'not_found', message: 'Order tidak ditemukan' });
+        }
+        const paymentStatus = await checkQRISPaymentStatus(orderId);
+        const isPaid = paymentStatus.status === 'paid';
+        if (isPaid && order.status !== 'paid') {
+            await updateOrder(orderId, { status: 'paid' });
+        }
+        res.json({
+            success: true,
+            status: paymentStatus.status,
+            order_id: orderId,
+            transaction: paymentStatus
+        });
+    } catch (error) {
+        console.error('Check payment error:', error);
+        await sendTelegramError(error, { route: '/api/check-payment', orderId });
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+app.post('/api/create-panel', async (req, res) => {
+    try {
+        const { order_id } = req.body;
+        if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
+        
+        const order = await findOrderById(order_id);
+        if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
+        
+        if (order.status !== 'paid') {
+            return res.status(400).json({ success: false, message: 'Pembayaran belum dikonfirmasi. Status: ' + order.status });
+        }
+        if (order.panel_created) {
+            return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
+        }
+
+        const username = order.email.split('@')[0];
+        const randomPassword = generateRandomPassword(8);
+        const user = await findUserByEmail(order.email);
+        let pterodactylUserId = null;
+        let userResult = null;
+        const existingUser = await findPterodactylUserByEmail(order.email);
+        if (existingUser.success) {
+            pterodactylUserId = existingUser.userId;
+            userResult = { success: true, userId: pterodactylUserId };
+            if (user && user.pterodactylUserId !== pterodactylUserId) {
+                await updateUser(user.id, { pterodactylUserId });
+            }
+        } else {
+            userResult = await createPterodactylUser(order.email, username, randomPassword);
+            if (!userResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
+            pterodactylUserId = userResult.userId;
+            if (user) await updateUser(user.id, { pterodactylUserId });
+        }
+
+        const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
+        if (!panelResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat server' });
+
+        await updateOrder(order_id, {
+            panel_created: true,
+            panel_data: panelResult,
+            user_data: { email: order.email, username: username, password: randomPassword }
+        });
+
+        if (user) {
+            const purchased = user.purchasedPanels || [];
+            purchased.push({
+                order_id: order_id,
+                panel_type: order.panel_type,
+                panel_url: panelResult.panelUrl,
+                username: username,
+                password: randomPassword,
+                created_at: new Date().toISOString()
+            });
+            await updateUser(user.id, { purchasedPanels: purchased });
+        }
+
+        // ========== NOTIFIKASI TELEGRAM (HANYA DI SINI) ==========
+        const now = new Date();
+        const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
+        const dayName = formatterDay.format(now);
+        const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
+        const dateStr = formatterDate.format(now).replace(/\//g, '-');
+        const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
+        const timeStr = formatterTime.format(now);
+        const formattedTime = `${dayName}, ${dateStr} ${timeStr}`;
+        const ownerMsg = `🎉 <b>PANEL BARU DIBUAT</b> 🎉\n\n` +
+            `📅 <b>Waktu</b> : ${formattedTime}\n` +
+            `📧 <b>Email</b> : <code>${order.email}</code>\n` +
+            `👤 <b>Username</b> : <code>${username}</code>\n` +
+            `📦 <b>Tipe Panel</b> : ${order.panel_type.toUpperCase()}\n` +
+            `💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n` +
+            `🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n` +
+            `🏷️ <b>Nama Server</b> : ${panelResult.name}`;
+        try {
+            await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: config.OWNER_ID,
+                    text: ownerMsg,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true,
+                    reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] }
+                })
+            });
+        } catch (telegramError) {
+            console.error('Telegram notification failed:', telegramError);
+        }
+        // =========================================================
+
+        res.json({ success: true, panel: panelResult, user: { email: order.email, username: username }, message: 'Panel berhasil dibuat!' });
+    } catch (error) {
+        console.error('Create panel error:', error);
+        await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
+        res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    }
+});
 
 // ==========================================================================
-// PAYMENT CALLBACK (dengan file HTML terpisah)
+// PAYMENT CALLBACK (dengan file HTML terpisah) - NOTIFIKASI TELEGRAM DIHAPUS
 // ==========================================================================
 app.get('/payment-callback', async (req, res) => {
   const { order_id, amount } = req.query;
@@ -1143,7 +1241,6 @@ app.get('/payment-callback', async (req, res) => {
 
   try {
     const paymentStatus = await checkPaymentStatus(order_id, amount || order.amount);
-    // Jika status belum paid/completed, kirim data untuk halaman menunggu
     if (paymentStatus.status !== 'paid' && paymentStatus.status !== 'completed') {
       const callbackData = {
         status: paymentStatus.status,
@@ -1159,7 +1256,6 @@ app.get('/payment-callback', async (req, res) => {
       return res.send(html);
     }
 
-    // Jika pembayaran berhasil, pastikan panel sudah dibuat (jika belum, buat)
     if (!order.panel_created) {
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
@@ -1199,41 +1295,9 @@ app.get('/payment-callback', async (req, res) => {
         });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
-      // Kirim notifikasi Telegram (opsional, tetap dijalankan)
-      const now = new Date();
-      const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
-      const dayName = formatterDay.format(now);
-      const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
-      const dateStr = formatterDate.format(now).replace(/\//g, '-');
-      const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
-      const timeStr = formatterTime.format(now);
-      const formattedTime = `${dayName}, ${dateStr} ${timeStr}`;
-      const ownerMsg = `🎉 <b>PANEL BARU DIBUAT</b> 🎉\n\n` +
-        `📅 <b>Waktu</b> : ${formattedTime}\n` +
-        `📧 <b>Email</b> : <code>${order.email}</code>\n` +
-        `👤 <b>Username</b> : <code>${username}</code>\n` +
-        `📦 <b>Tipe Panel</b> : ${order.panel_type.toUpperCase()}\n` +
-        `💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n` +
-        `🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n` +
-        `🏷️ <b>Nama Server</b> : ${panelResult.name}`;
-      try {
-        await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: config.OWNER_ID,
-            text: ownerMsg,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-            reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] }
-          })
-        });
-      } catch (telegramError) {
-        console.error('Telegram notification failed:', telegramError);
-      }
+      // NOTIFIKASI TELEGRAM DIHAPUS DARI SINI
     }
 
-    // Ambil data order terbaru setelah panel dibuat
     const updatedOrder = await findOrderById(order_id);
     const panel = updatedOrder.panel_data;
     const user = updatedOrder.user_data;
