@@ -4796,22 +4796,14 @@ async function startServer() {
     app.use(passport.initialize());
     app.use(passport.session());
     app.use(flash());
-    
-    // ========== MODIFIKASI CSRF ==========
     const csrfProtection = csrf({ cookie: true });
     app.use((req, res, next) => {
-      // Lewati CSRF untuk semua API (termasuk /api/*)
-      if (req.originalUrl.startsWith('/api/')) {
-        return next();
-      }
-      // Terapkan CSRF hanya untuk POST non-API
-      if (req.method === 'POST') {
+      if (req.method === 'POST' && (req.path === '/login' || req.path === '/register' || req.path === '/profile' || req.path === '/delete-account')) {
         return csrfProtection(req, res, next);
       }
-      next();
+      if (req.path.startsWith('/api/')) return next();
+      return csrfProtection(req, res, next);
     });
-    // ====================================
-    
     if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
       passport.use(new GoogleStrategy({
         clientID: config.GOOGLE_CLIENT_ID,
