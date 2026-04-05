@@ -14,7 +14,7 @@ const multer = require('multer');
 const { Octokit } = require('@octokit/rest');
 const config = require('./setting.js');
 const jwt = require('jsonwebtoken');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { ProxyAgent } = require('proxy-agent');
 const app = express();
 const SITE_NAME = config.SITE_NAME || 'novanet';
 const PORT = config.PORT || 8080;
@@ -955,8 +955,7 @@ async function generateQrispyQR(amount, paymentReference) {
     const proxyUrl = getRandomProxy();
     console.log(`Menggunakan proxy: ${proxyUrl}`);
 
-    // Buat agent dengan proxy tersebut
-    const agent = new HttpsProxyAgent(proxyUrl);
+const agent = new ProxyAgent(proxyUrl);
 
     const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/generate`, {
       method: 'POST',
