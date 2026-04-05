@@ -896,24 +896,30 @@ async function deletePterodactylServer(serverId) {
   }
 }
 
-// ============================================================================
-// FUNGSI QRISPY (BARU)
-// ============================================================================
 async function generateQrispyQR(amount, paymentReference) {
   try {
     const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/generate`, {
       method: 'POST',
       headers: {
-        'X-API-Token': QRISPY_API_TOKEN,
-        'Content-Type': 'application/json'
+        'X-API-Token': QRISPY_API_TOKEN.trim(), // pastikan tidak ada spasi
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'            // kunci utama
       },
-      body: JSON.stringify({
-        amount: amount,
-        payment_reference: paymentReference,
-        return_url: `${config.URL}/payment-callback` // optional
-      })
+      body: JSON.stringify({ amount, payment_reference: paymentReference })
     });
-    const data = await response.json();
+
+    // Debug: lihat status dan raw response
+    const text = await response.text();
+    console.log('Status:', response.status);
+    console.log('Response:', text.substring(0, 200));
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Invalid JSON (status ${response.status}): ${text.substring(0, 200)}`);
+    }
+
     if (data.status !== 'success') {
       throw new Error(data.message || 'Gagal generate QRIS');
     }
