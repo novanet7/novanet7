@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
+    <title>Pembayaran - {{SITE_NAME}}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+            color:#fff;
+            font-family:'Rajdhani',sans-serif;
+            min-height:100vh;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            padding:20px;
+        }
+        .payment-container{
+            max-width:500px;
+            width:100%;
+            background:rgba(15,25,45,0.6);
+            backdrop-filter:blur(12px);
+            border-radius:32px;
+            padding:30px;
+            border:1px solid rgba(91,140,255,0.4);
+            text-align:center;
+        }
+        h2{
+            font-family:'Orbitron';
+            color:#5b8cff;
+            margin-bottom:20px;
+        }
+        .qris-image{
+            width:280px;
+            height:280px;
+            margin:20px auto;
+            background:white;
+            border-radius:16px;
+            padding:10px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+        }
+        .qris-image img{
+            max-width:100%;
+            max-height:100%;
+        }
+        .amount{
+            font-size:28px;
+            color:#ffcc00;
+            margin:15px 0;
+        }
+        .status{
+            background:rgba(0,0,0,0.5);
+            padding:12px;
+            border-radius:12px;
+            margin:15px 0;
+        }
+        button{
+            background:linear-gradient(90deg,#1e3c72,#2a5298);
+            border:none;
+            border-radius:40px;
+            padding:12px 25px;
+            color:#fff;
+            font-weight:bold;
+            cursor:pointer;
+            margin:10px;
+            transition:0.2s;
+        }
+        button:hover{
+            transform:scale(1.02);
+            box-shadow:0 0 15px #5b8cff;
+        }
+        .back-link{
+            display:inline-block;
+            margin-top:20px;
+            color:#8a9bb0;
+            text-decoration:none;
+        }
+        .loader{
+            display:inline-block;
+            width:16px;
+            height:16px;
+            border:2px solid #fff;
+            border-top-color:#5b8cff;
+            border-radius:50%;
+            animation:spin 0.8s linear infinite;
+            margin-right:8px;
+        }
+        @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+</head>
+<body>
+<div class="payment-container">
+    <h2><i class="fas fa-qrcode"></i> Scan QRIS untuk Membayar</h2>
+    <div class="qris-image"><img src="{{qrisImage}}" alt="QRIS Code"></div>
+    <div class="amount">Rp {{amount}}</div>
+    <div class="status" id="paymentStatus">⏳ Menunggu pembayaran...</div>
+    <div><button id="checkBtn"><i class="fas fa-sync-alt"></i> Cek Pembayaran</button></div>
+    <a href="/" class="back-link">← Kembali ke Beranda</a>
+</div>
+<script>
+    const orderId = "{{orderId}}";
+    let pollingInterval = null;
+    let isProcessing = false;
+
+    async function checkPayment() {
+        if (isProcessing) return;
+        isProcessing = true;
+        const btn = document.getElementById('checkBtn');
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="loader"></span> Mengecek...';
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/check-payment/' + orderId + '/0');
+            const data = await res.json();
+            if (data.status === 'paid') {
+                document.getElementById('paymentStatus').innerHTML = '✅ Pembayaran berhasil! Membuat panel...';
+                if (pollingInterval) clearInterval(pollingInterval);
+                const panelRes = await fetch('/api/create-panel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_id: orderId })
+                });
+                const panelData = await panelRes.json();
+                if (panelData.success) {
+                    document.getElementById('paymentStatus').innerHTML = '✅ Panel berhasil dibuat! Mengarahkan ke profil...';
+                    setTimeout(() => { window.location.href = '/profile'; }, 1500);
+                } else {
+                    document.getElementById('paymentStatus').innerHTML = '❌ Panel gagal dibuat: ' + panelData.message;
+                }
+            } else if (data.status === 'expired') {
+                document.getElementById('paymentStatus').innerHTML = '⏰ QRIS telah kedaluwarsa. Silakan pesan ulang.';
+                if (pollingInterval) clearInterval(pollingInterval);
+            } else {
+                document.getElementById('paymentStatus').innerHTML = '⏳ Menunggu pembayaran... Status: ' + data.status;
+            }
+        } catch (err) {
+            console.error(err);
+            document.getElementById('paymentStatus').innerHTML = '❌ Gagal mengecek status. Coba lagi nanti.';
+        } finally {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            isProcessing = false;
+        }
+    }
+
+    function startPolling() {
+        if (pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = setInterval(() => checkPayment(), 5000);
+    }
+    startPolling();
+
+    document.getElementById('checkBtn').addEventListener('click', () => checkPayment());
+    window.addEventListener('beforeunload', () => { if (pollingInterval) clearInterval(pollingInterval); });
+</script>
+</body>
+</html>
