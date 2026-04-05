@@ -40,7 +40,18 @@ function renderHTML(fileName, replacements = {}) {
     const filePath = path.join(__dirname, 'public', fileName);
     let content = fs.readFileSync(filePath, 'utf8');
     
-    // Proses kondisional {{#if variable}}...{{/if}}
+    // 1. Proses kondisional dengan else: {{#if variable}}...{{else}}...{{/if}}
+    const ifElseRegex = /{{#if\s+([\w.]+)}}([\s\S]*?){{else}}([\s\S]*?){{\/if}}/g;
+    content = content.replace(ifElseRegex, (match, varName, ifPart, elsePart) => {
+        const value = replacements[varName];
+        if (value && value !== 'false' && value !== '0' && value !== '') {
+            return ifPart;
+        } else {
+            return elsePart;
+        }
+    });
+    
+    // 2. Proses kondisional tanpa else: {{#if variable}}...{{/if}}
     const ifRegex = /{{#if\s+([\w.]+)}}([\s\S]*?){{\/if}}/g;
     content = content.replace(ifRegex, (match, varName, inner) => {
         const value = replacements[varName];
@@ -50,7 +61,7 @@ function renderHTML(fileName, replacements = {}) {
         return '';
     });
     
-    // Proses kondisional {{#unless variable}}...{{/unless}}
+    // 3. Proses kondisional {{#unless variable}}...{{/unless}}
     const unlessRegex = /{{#unless\s+([\w.]+)}}([\s\S]*?){{\/unless}}/g;
     content = content.replace(unlessRegex, (match, varName, inner) => {
         const value = replacements[varName];
@@ -60,7 +71,7 @@ function renderHTML(fileName, replacements = {}) {
         return '';
     });
     
-    // Proses penggantian variabel biasa {{variable}}
+    // 4. Proses penggantian variabel biasa {{variable}}
     for (const [key, value] of Object.entries(replacements)) {
         const regex = new RegExp(`{{${key}}}`, 'g');
         content = content.replace(regex, value);
