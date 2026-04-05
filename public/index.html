@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=0.65, user-scalable=yes">
+  <title>{{SITE_NAME}} cPanel Store | Beli Panel Pterodactyl Otomatis</title>
+  <meta name="description" content="Beli panel Pterodactyl dengan mudah dan cepat. Pembayaran otomatis via QRIS, panel langsung aktif. Pilihan RAM 1GB hingga Unlimited. Aktivasi instan, garansi refund 20 menit.">
+  <meta name="keywords" content="beli panel pterodactyl">
+  <meta name="author" content="{{DEVELOPER}}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{URL}}">
+  <meta property="og:title" content="{{SITE_NAME}} cPanel Store - Panel Pterodactyl Instan">
+  <meta property="og:description" content="Dapatkan panel Pterodactyl dengan mudah dan cepat. Pembayaran otomatis, panel langsung aktif. Pilih paket sesuai kebutuhan Anda.">
+  <meta property="og:image" content="{{FAVICON}}">
+  <meta property="og:url" content="{{URL}}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{SITE_NAME}} cPanel">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{SITE_NAME}} cPanel Store - Panel Pterodactyl Instan">
+  <meta name="twitter:description" content="Beli panel Pterodactyl dengan mudah dan cepat. Pembayaran otomatis, panel langsung aktif. Aktivasi instan!">
+  <meta name="google-site-verification" content="{{GOOGLE_VERIF}}">
+  <meta name="twitter:image" content="{{FAVICON}}">
+  <link rel="icon" type="image/jpeg" href="{{FAVICON}}">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600&family=Orbitron:wght@500;700&family=VT323&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background: #0a0c14;
+      color: #fff;
+      min-height: 100vh;
+      padding-bottom: 40px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    #bgVideo {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: -2;
+      pointer-events: none;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: -1;
+      pointer-events: none;
+    }
+    .custom-header {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      height: 55px;
+      background: rgba(10, 12, 20, 0.95);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 100;
+      border-bottom: 1px solid #1f2a40;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      height: 48px;
+      width: auto;
+      border-radius: 10px;
+      transition: transform 0.2s;
+    }
+    .header-logo:hover {
+      transform: scale(1.05);
+    }
+    .header-title {
+      font-family: 'Orbitron';
+      font-size: 20px;
+      color: #5b8cff;
+      letter-spacing: 1px;
+      text-decoration: none;
+    }
+    .header-title:hover {
+      text-decoration: underline;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .info-stats {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 4px 12px;
+      border-radius: 40px;
+      backdrop-filter: blur(4px);
+    }
+    .stat-badge {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 13px;
+    }
+    .stat-badge i {
+      font-size: 12px;
+      color: #ffcc00;
+    }
+    .stat-badge span:first-child {
+      color: #8a9bb0;
+    }
+    .stat-badge span:last-child {
+      font-weight: bold;
+      color: #fff;
+      font-family: monospace;
+    }
+    .info-btn {
+      background: rgba(91, 140, 255, 0.2);
+      border: none;
+      color: #5b8cff;
+      font-size: 18px;
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
+    }
+    .info-btn:hover {
+      background: #5b8cff;
+      color: #000;
+      transform: scale(1.05);
+    }
+    .support-btn {
+      background: rgba(91, 140, 255, 0.2);
+      border: none;
+      color: #5b8cff;
+      font-size: 18px;
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: 0.2s;
+    }
+    .support-btn:hover {
+      background: #5b8cff;
+      color: #000;
+      transform: scale(1.05);
+    }
+    .support-dropdown {
+      display: none;
+      position: absolute;
+      top: 55px;
+      right: 100px;
+      background: #0f1320;
+      border: 1px solid #2a3a60;
+      border-radius: 12px;
+      min-width: 180px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.7);
+      z-index: 102;
+      overflow: hidden;
+    }
+    .support-dropdown a.support-item {
+      color: #fff;
+      padding: 12px 16px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: 0.2s;
+    }
+    .support-dropdown a.support-item:hover {
+      background: #1a1f30;
+      color: #5b8cff;
+    }
+    .support-dropdown.show {
+      display: block;
+    }
+    .user-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .user-dropdown-content {
+      display: none;
+      position: absolute;
+      right: 0;
+      background: #0f1320;
+      border: 1px solid #2a3a60;
+      border-radius: 12px;
+      min-width: 160px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.7);
+      z-index: 101;
+      overflow: hidden;
+    }
+    .user-dropdown-content a,
+    .user-dropdown-content button {
+      color: #fff;
+      padding: 12px 16px;
+      text-decoration: none;
+      display: block;
+      background: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .user-dropdown-content a:hover,
+    .user-dropdown-content button:hover {
+      background: #1a1f30;
+      color: #5b8cff;
+    }
+    .user-dropdown:hover .user-dropdown-content {
+      display: block;
+    }
+    .user-avatar {
+      width: 35px;
+      height: 35px;
+      border-radius: 50%;
+      border: 2px solid #5b8cff;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .user-avatar:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 15px #5b8cff;
+    }
+    .login-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(90deg, #1e3c72, #2a5298);
+      padding: 6px 14px;
+      border-radius: 40px;
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+    .login-btn:hover {
+      transform: scale(1.02);
+      box-shadow: 0 0 15px #5b8cff;
+    }
+    .menu-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: 0.2s;
+    }
+    .menu-btn:hover {
+      background: #1f2a40;
+    }
+    .menu-btn span {
+      width: 22px;
+      height: 2px;
+      background: #fff;
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+    .menu-btn.active span:nth-child(1) {
+      transform: rotate(45deg) translate(6px, 6px);
+    }
+    .menu-btn.active span:nth-child(2) {
+      opacity: 0;
+    }
+    .menu-btn.active span:nth-child(3) {
+      transform: rotate(-45deg) translate(6px, -6px);
+    }
+    .status-panel {
+      position: fixed;
+      top: -100%;
+      left: 0;
+      width: 100%;
+      background: #0f1320;
+      border-bottom: 2px solid #2a3a60;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.7);
+      z-index: 99;
+      transition: top 0.4s ease;
+      padding: 70px 20px 20px 20px;
+      backdrop-filter: blur(8px);
+    }
+    .status-panel.show {
+      top: 0;
+    }
+    .status-panel h3 {
+      font-family: 'Orbitron';
+      color: #5b8cff;
+      margin-bottom: 20px;
+      font-size: 24px;
+      text-align: center;
+    }
+    .metric-row {
+      margin-bottom: 20px;
+      background: #0b0e18;
+      border-radius: 12px;
+      padding: 15px;
+      border: 1px solid #1f2a40;
+    }
+    .metric-header {
+      display: flex;
+      justify-content: space-between;
+      color: #8a9bb0;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+    .bar-container {
+      position: relative;
+      width: 100%;
+      height: 80px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 5px 10px;
+    }
+    .bar {
+      width: 8px;
+      border-radius: 3px 3px 0 0;
+      transition: height 0.2s ease, background 0.1s ease;
+      box-shadow: 0 0 3px rgba(255, 255, 255, 0.3);
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 25px;
+    }
+    .status-item {
+      background: #1a1f30;
+      border-radius: 8px;
+      padding: 12px;
+      border-left: 3px solid #3a6df0;
+    }
+    .status-item .label {
+      color: #8a9bb0;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .status-item .value {
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      font-family: 'VT323';
+    }
+    .page-container {
+      padding: 20px;
+      transition: filter 0.3s;
+    }
+    .page-container.blur {
+      filter: blur(3px);
+      pointer-events: none;
+    }
+    .lux-header-card {
+      background: linear-gradient(135deg, #1a2a48, #14233c);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 25px;
+      border: 1px solid #2a3a60;
+    }
+    .lux-header-card h2 {
+      font-family: 'Orbitron';
+      font-size: 20px;
+      color: #5b8cff;
+    }
+    .lux-header-card p {
+      font-size: 14px;
+      color: #a0b0c0;
+    }
+    .lux-section-title {
+      font-family: 'Orbitron';
+      font-size: 16px;
+      color: #fff;
+      margin-bottom: 15px;
+      padding-left: 8px;
+      border-left: 4px solid #5b8cff;
+    }
+    .slider-container {
+      width: 100%;
+      background: #101520;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #1f2a40;
+      margin-bottom: 25px;
+      height: 150px;
+      touch-action: pan-y;
+      cursor: grab;
+      user-select: none;
+    }
+    .slider-track {
+      display: flex;
+      width: 200%;
+      height: 100%;
+      transition: transform 0.4s;
+    }
+    .slide {
+      width: 50%;
+      height: 100%;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .slide video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .slide-content {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+    }
+    .slide-content h3 {
+      font-family: 'Orbitron';
+      font-size: 14px;
+      color: #fff;
+    }
+    .slide-content p {
+      font-size: 12px;
+      color: #ccc;
+    }
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 25px;
+      margin-bottom: 30px;
+    }
+    .price-card {
+      position: relative;
+      background: url('https://files.catbox.moe/sgjra6.png') no-repeat center center;
+      background-size: cover;
+      border-radius: 20px;
+      padding: 20px;
+      overflow: hidden;
+      text-align: center;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transform: translateX(0);
+      animation: slideIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+    .price-card:nth-child(odd) {
+      animation-name: slideInLeft;
+    }
+    .price-card:nth-child(even) {
+      animation-name: slideInRight;
+    }
+    @keyframes slideInLeft {
+      0% {
+        opacity: 0;
+        transform: translateX(-80px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    @keyframes slideInRight {
+      0% {
+        opacity: 0;
+        transform: translateX(80px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    .price-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 20px;
+      z-index: 0;
+    }
+    .price-card > * {
+      position: relative;
+      z-index: 1;
+    }
+    .price-card:hover {
+      transform: translateY(-5px) scale(1.02);
+      border-color: #5b8cff;
+      box-shadow: 0 15px 35px rgba(91, 140, 255, 0.4);
+      transition: all 0.3s ease;
+    }
+    .panel-type {
+      font-family: 'Orbitron';
+      font-size: 1.6rem;
+      color: #5b8cff;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px #5b8cff;
+    }
+    .panel-specs {
+      font-size: 0.95rem;
+      color: #f0f0f0;
+      margin-bottom: 15px;
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 12px;
+      padding: 8px;
+    }
+    .price {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #ffcc00;
+      margin: 15px 0;
+      text-shadow: 0 0 5px #ffaa00;
+    }
+    .buy-btn {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(90deg, #1e3c72, #2a5298);
+      border: none;
+      border-radius: 50px;
+      color: #fff;
+      font-family: 'Orbitron';
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .buy-btn:hover {
+      transform: scale(1.02);
+      box-shadow: 0 0 15px #5b8cff;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: #0b0f19;
+      padding: 30px;
+      border-radius: 20px;
+      max-width: 450px;
+      width: 90%;
+      text-align: center;
+      border: 2px solid #5b8cff;
+      box-shadow: 0 0 30px rgba(91, 140, 255, 0.3);
+    }
+    .modal h2 {
+      font-family: 'Orbitron';
+      color: #5b8cff;
+      margin-bottom: 20px;
+      font-size: 1.5rem;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .modal-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 30px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .modal-btn.cancel {
+      background: #2a3a60;
+      color: #fff;
+    }
+    .modal-btn.confirm {
+      background: linear-gradient(90deg, #1e3c72, #2a5298);
+      color: #fff;
+    }
+    .modal-gif {
+      width: 120px;
+      margin: 0 auto 20px;
+      display: block;
+      border-radius: 12px;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px;
+      margin-top: 30px;
+      border-top: 1px solid #1f2a40;
+      color: #8a9bb0;
+      font-size: 12px;
+    }
+    .info-text {
+      text-align: left;
+      margin: 20px 0;
+      line-height: 1.6;
+      color: #ddd;
+    }
+    .info-text p {
+      margin-bottom: 12px;
+    }
+    .info-text ul {
+      margin-left: 20px;
+      margin-top: 8px;
+    }
+    .info-text li {
+      margin-bottom: 6px;
+    }
+    @media (max-width: 768px) {
+      .header-right {
+        gap: 8px;
+      }
+      .info-stats {
+        gap: 6px;
+        padding: 2px 8px;
+      }
+      .stat-badge {
+        font-size: 10px;
+      }
+      .stat-badge i {
+        font-size: 10px;
+      }
+      .info-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+      }
+      .support-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+      }
+      .support-dropdown {
+        right: 70px;
+        top: 50px;
+      }
+      .user-avatar {
+        width: 30px;
+        height: 30px;
+      }
+      .header-logo {
+        height: 38px;
+      }
+      .header-title {
+        font-size: 16px;
+      }
+      .logo-container {
+        gap: 6px;
+      }
+      .price-card {
+        padding: 15px;
+      }
+      .panel-type {
+        font-size: 1.3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <video id="bgVideo" src="https://files.catbox.moe/3yo7nw.mp4" autoplay muted loop playsinline></video>
+  <div class="custom-header">
+    <div class="logo-container">
+      <img src="https://files.catbox.moe/u47x3d.png" alt="Logo {{SITE_NAME}}" class="header-logo">
+      <a href="/" class="header-title">{{SITE_NAME}} CPANEL</a>
+    </div>
+    <div class="header-right">
+      <button class="info-btn" id="infoBtn"><i class="fas fa-info-circle"></i></button>
+      <button class="support-btn" id="supportBtn"><i class="fas fa-headset"></i></button>
+      <div class="support-dropdown" id="supportDropdown">
+        <a href="https://wa.me/{{whatsappNumber}}" target="_blank" class="support-item">
+          <i class="fab fa-whatsapp"></i> Chat WhatsApp
+        </a>
+        <a href="https://t.me/{{telegramUsername}}" target="_blank" class="support-item">
+          <i class="fab fa-telegram"></i> Chat Telegram
+        </a>
+      </div>
+      <div class="info-stats">
+        {{#if isLoggedIn}}
+        <div class="stat-badge">
+          <i class="fas fa-shopping-cart"></i>
+          <span>Total Beli:</span>
+          <span>Rp {{totalPurchasesFormatted}}</span>
+        </div>
+        {{/if}}
+        <div class="stat-badge">
+          <i class="fas fa-users"></i>
+          <span>Total User:</span>
+          <span>{{totalUsers}}</span>
+        </div>
+      </div>
+      {{#if isLoggedIn}}
+      <div class="user-dropdown">
+        <img src="{{photoUrl}}" class="user-avatar" alt="Avatar">
+        <div class="user-dropdown-content">
+          <a href="/profile"><i class="fas fa-user"></i> Profil</a>
+          <a href="/logout"><i class="fas fa-sign-out-alt"></i> Keluar Akun</a>
+          <a href="/delete-account"><i class="fas fa-trash"></i> Hapus Akun</a>
+        </div>
+      </div>
+      {{else}}
+      <a href="/login" class="login-btn"><i class="fas fa-sign-in-alt"></i> Login</a>
+      {{/if}}
+      <div class="menu-btn" id="menuBtn">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  </div>
+  <div class="status-panel" id="statusPanel">
+    <h3><i class="fas fa-chart-line"></i> SERVER STATUS</h3>
+    <div class="metric-row">
+      <div class="metric-header"><span>CPU Load</span><span id="cpuValue">0.0%</span></div>
+      <div class="bar-container" id="cpuBars"></div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-header"><span>Memory</span><span id="memValue">0 MiB</span></div>
+      <div class="bar-container" id="memBars"></div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-header"><span>Network</span><span id="netValue">0 B/s</span></div>
+      <div class="bar-container" id="netBars"></div>
+    </div>
+    <div id="statusContent" class="status-grid">Memuat...</div>
+  </div>
+  <div class="page-container" id="pageContainer">
+    <div class="lux-header-card">
+      <h2>{{SITE_NAME}} cPanel Store</h2>
+      <p>Selamat datang, {{safeName}}! Pilih paket panel Pterodactyl di bawah ini.</p>
+    </div>
+    <div class="slider-container" id="newsSlider">
+      <div class="slider-track">
+        <div class="slide">
+          <video src="https://files.catbox.moe/8v8txh.mp4" autoplay muted loop playsinline></video>
+          <div class="slide-content">
+            <h3>{{SITE_NAME}} cPanel v{{VERSI_WEB}}</h3>
+            <p>Panel Pterodactyl siap pakai</p>
+          </div>
+        </div>
+        <div class="slide">
+          <video src="https://files.catbox.moe/cqdqmg.mp4" autoplay muted loop playsinline></video>
+          <div class="slide-content">
+            <h3>Mudah & Cepat</h3>
+            <p>Pembayaran otomatis, panel langsung aktif</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="lux-section-title">Pilih Paket Server</div>
+    <div class="pricing-grid" id="pricingGrid"></div>
+    <div class="footer">
+      <p>© 2026 {{SITE_NAME}} • {{DEVELOPER}} • v{{VERSI_WEB}}</p>
+    </div>
+  </div>
+  <div id="infoModal" class="modal">
+    <div class="modal-content">
+      <h2><i class="fas fa-info-circle"></i> Tentang {{SITE_NAME}}</h2>
+      <div class="info-text">
+        <p><strong>{{SITE_NAME}} cPanel Store</strong> adalah platform pembelian panel Pterodactyl dengan sistem otomatis. Nikmati kemudahan mendapatkan server game atau aplikasi Anda sendiri.</p>
+        <p><strong>✨ Fitur Unggulan:</strong></p>
+        <ul>
+          <li>✅ <strong>Pembayaran Otomatis</strong> – Transaksi via Pakasir (QRIS) langsung diproses.</li>
+          <li>✅ <strong>Aktivasi Instan</strong> – Panel aktif segera setelah pembayaran berhasil.</li>
+          <li>✅ <strong>Berbagai Pilihan Paket</strong> – RAM dari 1GB hingga 10GB, serta Unlimited.</li>
+          <li>✅ <strong>Manajemen Panel Mudah</strong> – Lihat detail login, password, dan URL panel di profil.</li>
+          <li>✅ <strong>Fitur Refund (20 Menit)</strong> – Ajukan pengembalian dana dengan mengisi nomor Dana.</li>
+          <li>✅ <strong>Keamanan Terjamin</strong> – Data tersimpan di GitHub dengan enkripsi.</li>
+        </ul>
+        <p><strong>💡 Cara Pembelian:</strong> Pilih paket, login, lakukan pembayaran, dan panel Anda akan otomatis dibuat. Nikmati kemudahan tanpa ribet!</p>
+      </div>
+      <div class="modal-buttons">
+        <button class="modal-btn cancel" onclick="closeInfoModal()">Tutup</button>
+      </div>
+    </div>
+  </div>
+  <div id="orderModal" class="modal">
+    <div class="modal-content">
+      <h2 id="modalTitle">Konfirmasi Pembelian</h2>
+      <div id="modalPackageDetails" style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 15px; margin-bottom: 20px; text-align: left;"></div>
+      <div class="modal-buttons">
+        <button class="modal-btn cancel" onclick="closeOrderModal()">Batal</button>
+        <button class="modal-btn confirm" onclick="submitOrder()">Beli Sekarang</button>
+      </div>
+    </div>
+  </div>
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <img src="https://files.catbox.moe/guq9ea.gif" alt="Login reminder" class="modal-gif">
+      <h2 style="margin-bottom: 15px;">🔐 Perhatian</h2>
+      <p>Silakan login terlebih dahulu untuk membeli panel.</p>
+      <div class="modal-buttons">
+        <button class="modal-btn cancel" onclick="closeLoginModal()">Batal</button>
+        <button class="modal-btn confirm" onclick="window.location.href='/login'">Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const isLoggedIn = {{isLoggedIn}};
+    const menuBtn = document.getElementById('menuBtn');
+    const statusPanel = document.getElementById('statusPanel');
+    const pageContainer = document.getElementById('pageContainer');
+    menuBtn.addEventListener('click', () => {
+      menuBtn.classList.toggle('active');
+      statusPanel.classList.toggle('show');
+      pageContainer.classList.toggle('blur');
+    });
+    const infoBtn = document.getElementById('infoBtn');
+    const infoModal = document.getElementById('infoModal');
+    function openInfoModal() {
+      infoModal.style.display = 'flex';
+    }
+    function closeInfoModal() {
+      infoModal.style.display = 'none';
+    }
+    infoBtn.addEventListener('click', openInfoModal);
+    window.addEventListener('click', (e) => {
+      if (e.target === infoModal) closeInfoModal();
+    });
+    const supportBtn = document.getElementById('supportBtn');
+    const supportDropdown = document.getElementById('supportDropdown');
+    if (supportBtn) {
+      supportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        supportDropdown.classList.toggle('show');
+      });
+    }
+    window.addEventListener('click', () => {
+      if (supportDropdown) supportDropdown.classList.remove('show');
+    });
+    if (supportDropdown) {
+      supportDropdown.addEventListener('click', (e) => e.stopPropagation());
+    }
+    const statusContent = document.getElementById('statusContent');
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        const uptime = formatUptime(data.uptime);
+        statusContent.innerHTML = `
+          <div class="status-item"><div class="label">STATUS</div><div class="value" style="color:#0f0;">🟢 ONLINE</div></div>
+          <div class="status-item"><div class="label">VERSION</div><div class="value">${data.version}</div></div>
+          <div class="status-item"><div class="label">DEV</div><div class="value">${data.developer}</div></div>
+          <div class="status-item"><div class="label">UPTIME</div><div class="value">${uptime}</div></div>
+          <div class="status-item"><div class="label">TIME</div><div class="value">${new Date(data.timestamp).toLocaleTimeString('id-ID')}</div></div>
+        `;
+      } catch {
+        statusContent.innerHTML = '<div class="status-item">❌ Gagal</div>';
+      }
+    }
+    function formatUptime(s) {
+      const d = Math.floor(s / 86400);
+      const h = Math.floor((s % 86400) / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      return `${d}d ${h}h ${m}m ${sec}s`;
+    }
+    loadStatus();
+    setInterval(loadStatus, 30000);
+    const MAX_BAR_HEIGHT = 70;
+    function getColorForHeight(height, maxHeight) {
+      const ratio = Math.min(1, Math.max(0, height / maxHeight));
+      const hue = 120 * (1 - ratio);
+      return `hsl(${hue}, 100%, 60%)`;
+    }
+    function generateHeightsAndColors(basePercent, barCount = 24, maxHeight = MAX_BAR_HEIGHT) {
+      const heights = [];
+      const colors = [];
+      for (let i = 0; i < barCount; i++) {
+        let randomFactor = (Math.random() - 0.5) * 0.3;
+        let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
+        let height = (percent / 100) * maxHeight;
+        heights.push(height);
+        colors.push(getColorForHeight(height, maxHeight));
+      }
+      return { heights, colors };
+    }
+    function updateBarsWithColor(bars, basePercent) {
+      if (!bars || bars.length === 0) return;
+      const { heights, colors } = generateHeightsAndColors(basePercent, bars.length);
+      bars.forEach((bar, idx) => {
+        bar.style.height = heights[idx] + 'px';
+        bar.style.background = colors[idx];
+      });
+    }
+    function initBars(containerId, barCount = 24) {
+      const container = document.getElementById(containerId);
+      if (!container) return [];
+      container.innerHTML = '';
+      for (let i = 0; i < barCount; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'bar';
+        bar.style.height = '5px';
+        container.appendChild(bar);
+      }
+      return Array.from(container.children);
+    }
+    const cpuBars = initBars('cpuBars', 24);
+    const memBars = initBars('memBars', 24);
+    const netBars = initBars('netBars', 24);
+    setInterval(() => {
+      const cpuPercent = parseFloat(document.getElementById('cpuValue').innerText) || 0;
+      const memMB = parseFloat(document.getElementById('memValue').innerText) || 0;
+      const netBps = parseFloat(document.getElementById('netValue').innerText) || 0;
+      const memPercent = Math.min(100, (memMB / 500) * 100);
+      const netPercent = Math.min(100, (netBps / 1000) * 100);
+      updateBarsWithColor(cpuBars, cpuPercent);
+      updateBarsWithColor(memBars, memPercent);
+      updateBarsWithColor(netBars, netPercent);
+    }, 2000);
+    setInterval(() => {
+      document.getElementById('cpuValue').innerText = (Math.random() * 30).toFixed(1) + '%';
+      document.getElementById('memValue').innerText = Math.floor(Math.random() * 400) + ' MiB';
+      document.getElementById('netValue').innerText = Math.floor(Math.random() * 500) + ' B/s';
+    }, 2000);
+    let slideIdx = 0, slideInt;
+    const slider = document.getElementById('newsSlider');
+    const track = document.querySelector('.slider-track');
+    function startSlider() {
+      clearInterval(slideInt);
+      slideInt = setInterval(() => {
+        slideIdx = (slideIdx + 1) % 2;
+        updateSlide();
+      }, 5000);
+    }
+    function updateSlide() {
+      if (track) track.style.transform = `translateX(-${slideIdx * 50}%)`;
+    }
+    function setupSlider() {
+      if (!slider || !track) return;
+      let isSwiping = false, startX = 0, curX = 0;
+      const getX = e => e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+      slider.addEventListener('touchstart', e => {
+        startX = getX(e);
+        isSwiping = true;
+        clearInterval(slideInt);
+      });
+      slider.addEventListener('touchmove', e => {
+        if (!isSwiping) return;
+        curX = getX(e);
+        const diff = curX - startX;
+        if (Math.abs(diff) > 20) {
+          track.style.transform = `translateX(-${slideIdx * 50 + (diff / slider.offsetWidth) * 50}%)`;
+        }
+      });
+      slider.addEventListener('touchend', e => {
+        if (!isSwiping) return;
+        isSwiping = false;
+        const diff = curX - startX;
+        if (Math.abs(diff) > 80) {
+          diff > 0 ? slideIdx = (slideIdx - 1 + 2) % 2 : slideIdx = (slideIdx + 1) % 2;
+        }
+        updateSlide();
+        startSlider();
+      });
+      ['mousedown', 'mousemove', 'mouseup', 'mouseleave'].forEach(ev => slider.addEventListener(ev, e => { e.preventDefault(); }));
+    }
+    startSlider();
+    setupSlider();
+    const panelData = {{panelDataJSON}};
+    let selectedPanel = null;
+    function generatePriceCards() {
+      const grid = document.getElementById('pricingGrid');
+      let html = '';
+      panelData.forEach(panel => {
+        html += `
+          <div class="price-card">
+            <div class="panel-type">${panel.type.toUpperCase()}</div>
+            <div class="panel-specs">
+              <div><i class="fas fa-memory"></i> RAM: ${panel.ram}</div>
+              <div><i class="fas fa-hdd"></i> DISK: ${panel.disk}</div>
+              <div><i class="fas fa-microchip"></i> CPU: ${panel.cpu}</div>
+            </div>
+            <div class="price">Rp ${panel.price.toLocaleString('id-ID')}</div>
+            <button class="buy-btn" onclick="openOrderModal('${panel.type}')">
+              <i class="fas fa-shopping-cart"></i> BELI SEKARANG
+            </button>
+          </div>
+        `;
+      });
+      grid.innerHTML = html;
+    }
+    function openOrderModal(panelType) {
+      if (!isLoggedIn) {
+        document.getElementById('loginModal').style.display = 'flex';
+        return;
+      }
+      const panel = panelData.find(p => p.type === panelType);
+      if (!panel) return;
+      selectedPanel = panelType;
+      document.getElementById('modalPackageDetails').innerHTML = `
+        <p><strong>📦 Paket:</strong> ${panel.type.toUpperCase()}</p>
+        <p><strong>💾 RAM:</strong> ${panel.ram}</p>
+        <p><strong>💿 Disk:</strong> ${panel.disk}</p>
+        <p><strong>⚙️ CPU:</strong> ${panel.cpu}</p>
+        <p><strong>💰 Harga:</strong> Rp ${panel.price.toLocaleString('id-ID')}</p>
+      `;
+      document.getElementById('modalTitle').innerHTML = `Konfirmasi Pembelian - ${panel.type.toUpperCase()}`;
+      document.getElementById('orderModal').style.display = 'flex';
+    }
+    function closeOrderModal() {
+      document.getElementById('orderModal').style.display = 'none';
+      selectedPanel = null;
+    }
+    function closeLoginModal() {
+      document.getElementById('loginModal').style.display = 'none';
+    }
+    async function submitOrder() {
+      if (!isLoggedIn) {
+        alert('Silakan login terlebih dahulu.');
+        window.location.href = '/login';
+        return;
+      }
+      if (!selectedPanel) {
+        alert('Pilih paket terlebih dahulu!');
+        return;
+      }
+      const confirmBtn = document.querySelector('.modal-btn.confirm');
+      const originalText = confirmBtn.innerText;
+      confirmBtn.innerText = 'Memproses...';
+      confirmBtn.disabled = true;
+      try {
+        const response = await fetch('/api/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ panel_type: selectedPanel }),
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.success) {
+          window.location.href = data.payment_url;
+        } else {
+          alert(data.message || 'Gagal membuat order');
+          closeOrderModal();
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Terjadi kesalahan, silahkan coba lagi');
+        closeOrderModal();
+      } finally {
+        confirmBtn.innerText = originalText;
+        confirmBtn.disabled = false;
+      }
+    }
+    generatePriceCards();
+  </script>
+</body>
+</html>

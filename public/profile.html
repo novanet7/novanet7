@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.65, user-scalable=yes">
+<title>Profil - ${SITE_NAME} Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
+body {
+font-family: 'Rajdhani', sans-serif;
+background: radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+color: #fff;
+min-height: 100vh;
+padding: 20px;
+position: relative;
+overflow-x: hidden;
+}
+body::before {
+content: '';
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: url('https://files.catbox.moe/96uh8m.png') no-repeat center center fixed;
+background-size: cover;
+opacity: 0.35;
+z-index: -2;
+pointer-events: none;
+}
+body::after {
+content: '';
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: rgba(0, 0, 0, 0.55);
+z-index: -1;
+pointer-events: none;
+}
+.profile-container {
+max-width: 900px;
+margin: 0 auto;
+background: rgba(15, 25, 45, 0.5);
+backdrop-filter: blur(10px);
+border-radius: 32px;
+border: 1px solid rgba(91, 140, 255, 0.4);
+box-shadow: 0 25px 45px rgba(0, 0, 0, 0.5), 0 0 30px rgba(91, 140, 255, 0.2);
+padding: 30px;
+position: relative;
+transition: all 0.3s ease;
+}
+.profile-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 20px;
+flex-wrap: wrap;
+gap: 15px;
+}
+.stats-group {
+display: flex;
+gap: 20px;
+background: rgba(0, 0, 0, 0.4);
+padding: 8px 20px;
+border-radius: 50px;
+backdrop-filter: blur(4px);
+}
+.stat-item {
+text-align: center;
+}
+.stat-label {
+font-size: 11px;
+color: #8a9bb0;
+text-transform: uppercase;
+letter-spacing: 1px;
+}
+.stat-number {
+font-size: 20px;
+font-family: 'Orbitron';
+font-weight: bold;
+color: #ffcc00;
+}
+.menu-btn {
+background: rgba(0, 0, 0, 0.5);
+border: none;
+color: #fff;
+font-size: 26px;
+cursor: pointer;
+transition: 0.2s;
+width: 45px;
+height: 45px;
+border-radius: 50%;
+display: flex;
+align-items: center;
+justify-content: center;
+z-index: 20;
+position: relative;
+}
+.menu-btn:hover {
+background: rgba(91, 140, 255, 0.4);
+transform: scale(1.05);
+}
+.dropdown-content {
+display: none;
+position: absolute;
+top: 70px;
+right: 25px;
+background: rgba(10, 15, 25, 0.98);
+backdrop-filter: blur(12px);
+border: 1px solid #2a3a60;
+border-radius: 16px;
+min-width: 180px;
+box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+z-index: 100;
+overflow: hidden;
+}
+.dropdown-content a, .dropdown-content button {
+color: #fff;
+padding: 12px 18px;
+text-decoration: none;
+display: flex;
+align-items: center;
+gap: 10px;
+background: none;
+border: none;
+width: 100%;
+text-align: left;
+font-size: 14px;
+cursor: pointer;
+transition: 0.2s;
+}
+.dropdown-content a:hover, .dropdown-content button:hover {
+background: rgba(91, 140, 255, 0.2);
+color: #5b8cff;
+}
+.show {
+display: block;
+}
+.avatar-section {
+text-align: center;
+margin-bottom: 15px;
+}
+.avatar {
+width: 130px;
+height: 130px;
+border-radius: 50%;
+object-fit: cover;
+border: 3px solid #5b8cff;
+box-shadow: 0 0 20px rgba(91, 140, 255, 0.5);
+transition: transform 0.3s ease;
+}
+.avatar:hover {
+transform: scale(1.02);
+}
+.user-name {
+font-size: 28px;
+font-family: 'Orbitron', sans-serif;
+background: linear-gradient(135deg, #fff, #5b8cff);
+-webkit-background-clip: text;
+background-clip: text;
+color: transparent;
+text-align: center;
+margin: 12px 0 8px;
+letter-spacing: 1px;
+}
+.user-id {
+font-size: 14px;
+color: #8a9bb0;
+text-align: center;
+margin-bottom: 5px;
+font-family: monospace;
+}
+.user-bio {
+font-size: 15px;
+color: #ddd;
+text-align: center;
+margin-bottom: 25px;
+max-width: 500px;
+margin-left: auto;
+margin-right: auto;
+word-wrap: break-word;
+background: rgba(0, 0, 0, 0.4);
+padding: 6px 18px;
+border-radius: 40px;
+display: inline-block;
+width: auto;
+}
+.edit-form {
+display: none;
+margin-top: 25px;
+border-top: 1px solid rgba(91, 140, 255, 0.3);
+padding-top: 25px;
+}
+.form-group {
+margin-bottom: 20px;
+}
+label {
+display: block;
+margin-bottom: 8px;
+color: #8a9bb0;
+font-size: 14px;
+font-weight: 600;
+}
+input, textarea {
+width: 100%;
+padding: 12px 20px;
+border-radius: 40px;
+border: 1px solid #1f2a40;
+background: rgba(26, 31, 48, 0.9);
+color: #fff;
+font-size: 14px;
+transition: 0.2s;
+}
+input:focus, textarea:focus {
+outline: none;
+border-color: #5b8cff;
+box-shadow: 0 0 10px rgba(91, 140, 255, 0.3);
+}
+textarea {
+resize: vertical;
+min-height: 80px;
+border-radius: 20px;
+}
+button {
+background: linear-gradient(45deg, #5b8cff, #3a6df0);
+color: #000;
+border: none;
+padding: 12px 30px;
+border-radius: 40px;
+font-size: 16px;
+font-weight: bold;
+cursor: pointer;
+transition: 0.2s;
+}
+button:hover {
+transform: scale(1.02);
+box-shadow: 0 0 20px rgba(91, 140, 255, 0.5);
+}
+.section-title {
+font-family: 'Orbitron';
+font-size: 22px;
+color: #5b8cff;
+margin: 35px 0 20px;
+border-left: 4px solid #5b8cff;
+padding-left: 15px;
+letter-spacing: 1px;
+}
+.panel-card {
+background: rgba(0, 0, 0, 0.5);
+backdrop-filter: blur(4px);
+border: 1px solid rgba(91, 140, 255, 0.3);
+border-radius: 20px;
+margin-bottom: 20px;
+padding: 18px;
+transition: all 0.3s ease;
+}
+.panel-card:hover {
+border-color: #5b8cff;
+transform: translateY(-3px);
+box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+.panel-card-header {
+font-family: 'Orbitron';
+font-size: 18px;
+color: #ffcc00;
+margin-bottom: 12px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+flex-wrap: wrap;
+gap: 8px;
+}
+.panel-card-detail {
+font-size: 14px;
+color: #ddd;
+line-height: 1.8;
+}
+.panel-card-detail a {
+color: #5b8cff;
+text-decoration: none;
+}
+.panel-card-detail a:hover {
+text-decoration: underline;
+}
+.copy-btn {
+background: #2a3a60;
+color: #fff;
+border: none;
+padding: 2px 12px;
+border-radius: 30px;
+cursor: pointer;
+font-size: 11px;
+margin-left: 8px;
+transition: 0.2s;
+}
+.copy-btn:hover {
+background: #5b8cff;
+color: #000;
+}
+.panel-actions {
+margin-top: 15px;
+text-align: right;
+}
+.refund-btn {
+background: #f44336;
+color: #fff;
+border: none;
+padding: 6px 14px;
+border-radius: 30px;
+cursor: pointer;
+font-size: 12px;
+transition: 0.2s;
+}
+.refund-btn:hover {
+background: #d32f2f;
+transform: scale(1.03);
+}
+.refund-pending {
+background: #ff9800;
+color: #000;
+padding: 6px 14px;
+border-radius: 30px;
+font-size: 12px;
+display: inline-block;
+}
+.status-paid {
+color: #4caf50;
+font-size: 12px;
+font-weight: normal;
+background: rgba(76, 175, 80, 0.2);
+padding: 2px 10px;
+border-radius: 20px;
+}
+.status-pending {
+color: #ff9800;
+font-size: 12px;
+font-weight: normal;
+background: rgba(255, 152, 0, 0.2);
+padding: 2px 10px;
+border-radius: 20px;
+}
+.footer {
+text-align: center;
+margin-top: 40px;
+color: #5f6b7a;
+font-size: 12px;
+border-top: 1px solid rgba(91, 140, 255, 0.2);
+padding-top: 20px;
+}
+.spinner {
+display: inline-block;
+width: 20px;
+height: 20px;
+border: 2px solid rgba(255, 255, 255, 0.3);
+border-top-color: #5b8cff;
+border-radius: 50%;
+animation: spin 0.8s linear infinite;
+margin-right: 8px;
+}
+@keyframes spin {
+to { transform: rotate(360deg); }
+}
+.loading-text {
+display: inline-flex;
+align-items: center;
+gap: 8px;
+}
+.modal {
+display: none;
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: rgba(0, 0, 0, 0.85);
+backdrop-filter: blur(8px);
+z-index: 2000;
+align-items: center;
+justify-content: center;
+}
+.modal-content {
+background: #0b0f19;
+padding: 30px;
+border-radius: 28px;
+max-width: 450px;
+width: 90%;
+text-align: center;
+border: 2px solid #5b8cff;
+box-shadow: 0 0 40px rgba(91, 140, 255, 0.4);
+animation: fadeInUp 0.3s ease;
+}
+@keyframes fadeInUp {
+from {
+opacity: 0;
+transform: translateY(30px);
+}
+to {
+opacity: 1;
+transform: translateY(0);
+}
+}
+.modal h2 {
+font-family: 'Orbitron';
+color: #5b8cff;
+margin-bottom: 20px;
+font-size: 1.5rem;
+}
+.modal-buttons {
+display: flex;
+gap: 12px;
+margin-top: 20px;
+}
+.modal-btn {
+flex: 1;
+padding: 12px;
+border-radius: 40px;
+border: none;
+font-weight: bold;
+cursor: pointer;
+transition: 0.2s;
+}
+.modal-btn.cancel {
+background: #2a3a60;
+color: #fff;
+}
+.modal-btn.confirm {
+background: linear-gradient(90deg, #1e3c72, #2a5298);
+color: #fff;
+}
+.modal-btn:hover {
+transform: scale(1.02);
+}
+.modal-input-group {
+margin-bottom: 20px;
+text-align: left;
+}
+.modal-input-group label {
+display: block;
+margin-bottom: 6px;
+color: #8a9bb0;
+font-size: 13px;
+}
+.modal-input-group input, .modal-input-group textarea {
+width: 100%;
+padding: 10px 15px;
+border-radius: 30px;
+border: 1px solid #1f2a40;
+background: #1a1f30;
+color: #fff;
+font-size: 14px;
+}
+.modal-input-group textarea {
+min-height: 80px;
+resize: vertical;
+}
+.warning-text {
+color: #ffaa00;
+font-size: 12px;
+margin-top: -8px;
+margin-bottom: 15px;
+}
+#copyNotification {
+position: fixed;
+top: 30%;
+left: 50%;
+transform: translate(-50%, -50%);
+z-index: 10000;
+display: none;
+pointer-events: none;
+}
+#copyNotification img {
+max-width: 280px;
+width: auto;
+border-radius: 16px;
+box-shadow: 0 0 30px rgba(91, 140, 255, 0.5);
+}
+@media (max-width: 640px) {
+.profile-container {
+padding: 20px;
+}
+.profile-header {
+flex-direction: column;
+align-items: stretch;
+}
+.stats-group {
+justify-content: center;
+order: 2;
+}
+.menu-btn {
+order: 1;
+align-self: flex-end;
+}
+.avatar {
+width: 100px;
+height: 100px;
+}
+.user-name {
+font-size: 22px;
+}
+.section-title {
+font-size: 18px;
+}
+.panel-card-header {
+flex-direction: column;
+align-items: flex-start;
+}
+}
+</style>
+</head>
+<body>
+<div class="profile-container">
+<div class="profile-header">
+<div class="stats-group">
+<div class="stat-item">
+<div class="stat-label">Total Panel</div>
+<div class="stat-number">${totalPanels}</div>
+</div>
+<div class="stat-item">
+<div class="stat-label">Total Belanja</div>
+<div class="stat-number">Rp ${totalSpent.toLocaleString('id-ID')}</div>
+</div>
+</div>
+<button class="menu-btn" id="menuBtn">☰</button>
+</div>
+<div class="dropdown-content" id="dropdown">
+<a href="/"><i class="fas fa-home"></i> Beranda</a>
+<a href="#" id="editProfileBtn"><i class="fas fa-edit"></i> Edit Profil</a>
+<a href="/logout"><i class="fas fa-sign-out-alt"></i> Keluar Akun</a>
+<a href="/delete-account"><i class="fas fa-trash"></i> Hapus Akun</a>
+${user.email === config.ADMIN_EMAIL ? `<a href="/admin"><i class="fas fa-chart-line"></i> Admin Panel</a>` : ''}
+</div>
+<div class="avatar-section">
+<img src="${photoUrl}" class="avatar" id="avatarPreview" alt="Foto Profil">
+</div>
+<div class="user-name" id="displayName">${safeName}</div>
+<div class="user-id">🆔 ID: ${user.id}</div>
+<div class="user-bio" id="displayBio">${safeBio}</div>
+<div class="edit-form" id="editForm">
+<h3 style="font-family:'Orbitron'; color:#5b8cff; margin-bottom:20px;">Edit Profil</h3>
+<form id="profileEditForm" enctype="multipart/form-data">
+<input type="hidden" name="_csrf" value="${req.csrfToken()}">
+<div class="form-group"><label>Nama</label><input type="text" name="name" id="editName" value="${escapeHTML(user.name)}" required></div>
+<div class="form-group"><label>Bio</label><textarea name="bio" id="editBio">${escapeHTML(user.bio || '')}</textarea></div>
+<div class="form-group"><label>Foto Profil</label><input type="file" name="photo" id="editPhoto" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/bmp"></div>
+<button type="submit" id="submitBtn">Simpan Perubahan</button>
+</form>
+</div>
+<div class="section-title"><i class="fas fa-server"></i> Panel yang Dibeli</div>
+<div id="purchasedPanels">
+${panelsHtml || '<p style="color:#aaa; text-align:center;">Belum ada pembelian panel.</p>'}
+</div>
+<div class="footer">
+<span>${SITE_NAME} cPanel v${config.VERSI_WEB}</span> • ${config.DEVELOPER}
+</div>
+</div>
+<div id="copyNotification">
+<img src="https://files.catbox.moe/guq9ea.gif" alt="Copied">
+</div>
+
+<!-- Modal Refund -->
+<div id="refundModal" class="modal">
+<div class="modal-content">
+<h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2>
+<p>Silakan isi data berikut untuk pemrosesan refund.</p>
+<div class="modal-input-group">
+<label>Nomor Dana</label>
+<input type="text" id="danaNumber" placeholder="Contoh: 081234567890" required>
+</div>
+<div class="modal-input-group">
+<label>Nama Akun Dana</label>
+<input type="text" id="danaName" placeholder="Nama sesuai rekening Dana" required>
+</div>
+<div class="modal-input-group">
+<label>Alasan Refund (Opsional)</label>
+<textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea>
+</div>
+<div class="warning-text">⚠️ Admin tidak bertanggung jawab jika data yang dimasukkan salah. Pastikan data sesuai dengan akun Dana Anda.</div>
+<div class="modal-buttons">
+<button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button>
+<button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button>
+</div>
+</div>
+</div>
+
+<script>
+const menuBtn = document.getElementById('menuBtn');
+const dropdown = document.getElementById('dropdown');
+menuBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+dropdown.classList.toggle('show');
+});
+window.addEventListener('click', () => {
+dropdown.classList.remove('show');
+});
+document.getElementById('editProfileBtn').addEventListener('click', (e) => {
+e.preventDefault();
+document.getElementById('editForm').style.display = 'block';
+dropdown.classList.remove('show');
+});
+const profileForm = document.getElementById('profileEditForm');
+const originalSubmitText = document.getElementById('submitBtn').innerHTML;
+profileForm.addEventListener('submit', async (e) => {
+e.preventDefault();
+const submitBtn = document.getElementById('submitBtn');
+submitBtn.disabled = true;
+submitBtn.innerHTML = '<span class="loading-text"><span class="spinner"></span> Mengupload...</span>';
+const csrfToken = document.querySelector('input[name="_csrf"]').value;
+const formData = new FormData();
+formData.append('name', document.getElementById('editName').value);
+formData.append('bio', document.getElementById('editBio').value);
+const photoFile = document.getElementById('editPhoto').files[0];
+if (photoFile) formData.append('photo', photoFile);
+const res = await fetch('/profile', {
+method: 'POST',
+headers: { 'CSRF-Token': csrfToken },
+body: formData
+});
+const result = await res.json();
+submitBtn.disabled = false;
+if (result.success) {
+const notif = document.getElementById('copyNotification');
+if (notif) {
+notif.style.display = 'block';
+setTimeout(() => { notif.style.display = 'none'; location.reload(); }, 1500);
+} else {
+alert('Profil berhasil diperbarui!');
+location.reload();
+}
+} else {
+submitBtn.innerHTML = originalSubmitText;
+alert('Gagal: ' + result.error);
+}
+});
+document.querySelectorAll('.copy-btn').forEach(btn => {
+btn.addEventListener('click', () => {
+const text = btn.getAttribute('data-copy');
+navigator.clipboard.writeText(text).then(() => {
+const notif = document.getElementById('copyNotification');
+if (notif) { notif.style.display = 'block'; setTimeout(() => notif.style.display = 'none', 1500); }
+else alert('Teks disalin!');
+});
+});
+});
+let currentOrderId = null;
+function openRefundModal(orderId) {
+currentOrderId = orderId;
+document.getElementById('danaNumber').value = '';
+document.getElementById('danaName').value = '';
+document.getElementById('refundReason').value = '';
+document.getElementById('refundModal').style.display = 'flex';
+}
+function closeRefundModal() {
+document.getElementById('refundModal').style.display = 'none';
+currentOrderId = null;
+}
+document.getElementById('submitRefundBtn').addEventListener('click', async function() {
+const danaNumber = document.getElementById('danaNumber').value.trim();
+const danaName = document.getElementById('danaName').value.trim();
+const reason = document.getElementById('refundReason').value.trim();
+if (!danaNumber || !danaName) {
+alert('Nomor Dana dan Nama Akun Dana harus diisi!');
+return;
+}
+const confirmMsg = 'Apakah Anda yakin ingin mengajukan refund?\\n\\n' +
+'Nomor Dana: ' + danaNumber + '\\n' +
+'Nama Akun: ' + danaName + '\\n' +
+'Refund hanya dapat diajukan dalam 20 menit setelah pembayaran.';
+if (!confirm(confirmMsg)) return;
+const btn = this;
+const originalText = btn.innerText;
+btn.innerText = 'Memproses...';
+btn.disabled = true;
+try {
+const res = await fetch('/api/refund-order', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({
+order_id: currentOrderId,
+dana_number: danaNumber,
+dana_name: danaName,
+reason: reason
+})
+});
+const data = await res.json();
+if (data.success) {
+alert('Permintaan refund telah dikirim. Menunggu persetujuan admin.');
+location.reload();
+} else {
+alert('Gagal: ' + (data.message || 'Unknown error'));
+closeRefundModal();
+}
+} catch (err) {
+console.error(err);
+alert('Terjadi kesalahan, coba lagi nanti.');
+closeRefundModal();
+} finally {
+btn.innerText = originalText;
+btn.disabled = false;
+}
+});
+document.querySelectorAll('.refund-btn').forEach(btn => {
+btn.addEventListener('click', () => {
+const orderId = btn.getAttribute('data-order');
+if (orderId) openRefundModal(orderId);
+});
+});
+</script>
+</body>
+</html>

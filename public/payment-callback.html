@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
+  <title>{{SITE_NAME}} Panel - Konfirmasi Pembayaran</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{
+      background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+      color:#fff;
+      font-family:'Rajdhani',sans-serif;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      padding:20px;
+      position:relative;
+    }
+    body::before{
+      content:'';
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
+      background-size:cover;
+      opacity:0.2;
+      z-index:-2;
+    }
+    body::after{
+      content:'';
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:rgba(0,0,0,0.65);
+      z-index:-1;
+    }
+    .container{
+      max-width:650px;
+      width:100%;
+      background:rgba(15,25,45,0.6);
+      backdrop-filter:blur(12px);
+      border-radius:32px;
+      padding:35px;
+      border:1px solid rgba(91,140,255,0.4);
+      box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
+      animation:fadeInUp 0.5s ease;
+    }
+    @keyframes fadeInUp{
+      from{opacity:0;transform:translateY(30px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+    h1{
+      font-family:'Orbitron';
+      background:linear-gradient(135deg,#fff,#5b8cff);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+      margin-bottom:15px;
+      font-size:32px;
+      text-align:center;
+    }
+    .success-icon{
+      text-align:center;
+      font-size:70px;
+      margin-bottom:10px;
+      animation:pulse 1.5s infinite;
+    }
+    @keyframes pulse{
+      0%,100%{transform:scale(1);opacity:1}
+      50%{transform:scale(1.05);opacity:0.8}
+    }
+    .panel-card{
+      background:rgba(0,0,0,0.5);
+      border-radius:24px;
+      padding:20px;
+      margin:25px 0;
+      backdrop-filter:blur(4px);
+      border:1px solid rgba(91,140,255,0.3);
+    }
+    .detail-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:12px 0;
+      border-bottom:1px solid rgba(255,255,255,0.1);
+    }
+    .detail-row:last-child{border-bottom:none}
+    .detail-label{
+      color:#8a9bb0;
+      font-size:14px;
+      font-weight:600;
+    }
+    .detail-value{
+      font-family:'JetBrains Mono',monospace;
+      font-size:14px;
+      word-break:break-word;
+      text-align:right;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .copy-btn{
+      background:#2a3a60;
+      border:none;
+      color:#fff;
+      padding:4px 12px;
+      border-radius:30px;
+      cursor:pointer;
+      font-size:11px;
+      transition:0.2s;
+    }
+    .copy-btn:hover{
+      background:#5b8cff;
+      color:#000;
+      transform:scale(1.02);
+    }
+    .btn-group{
+      display:flex;
+      gap:15px;
+      justify-content:center;
+      margin-top:25px;
+      flex-wrap:wrap;
+    }
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      background:linear-gradient(90deg,#1e3c72,#2a5298);
+      color:#fff;
+      padding:12px 25px;
+      border-radius:50px;
+      text-decoration:none;
+      font-weight:bold;
+      transition:0.2s;
+    }
+    .btn:hover{
+      transform:scale(1.02);
+      box-shadow:0 0 20px rgba(91,140,255,0.5);
+    }
+    .refund-btn{
+      background:linear-gradient(90deg,#d32f2f,#f44336);
+    }
+    .refund-btn:hover{
+      box-shadow:0 0 20px #f44336;
+    }
+    .back-link{
+      display:block;
+      text-align:center;
+      margin-top:20px;
+      color:#8a9bb0;
+      text-decoration:none;
+    }
+    .back-link:hover{color:#5b8cff}
+    .modal{
+      display:none;
+      position:fixed;
+      top:0;
+      left:0;
+      width:100%;
+      height:100%;
+      background:rgba(0,0,0,0.85);
+      backdrop-filter:blur(8px);
+      z-index:2000;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal-content{
+      background:#0b0f19;
+      padding:30px;
+      border-radius:28px;
+      max-width:450px;
+      width:90%;
+      text-align:center;
+      border:2px solid #5b8cff;
+      box-shadow:0 0 40px rgba(91,140,255,0.4);
+      animation:fadeInUp 0.3s;
+    }
+    .modal h2{
+      font-family:'Orbitron';
+      color:#5b8cff;
+      margin-bottom:20px;
+      font-size:1.5rem;
+    }
+    .modal-input-group{
+      margin-bottom:20px;
+      text-align:left;
+    }
+    .modal-input-group label{
+      display:block;
+      margin-bottom:6px;
+      color:#8a9bb0;
+      font-size:13px;
+    }
+    .modal-input-group input,.modal-input-group textarea{
+      width:100%;
+      padding:10px 15px;
+      border-radius:30px;
+      border:1px solid #1f2a40;
+      background:#1a1f30;
+      color:#fff;
+      font-size:14px;
+    }
+    .modal-input-group textarea{
+      min-height:80px;
+      resize:vertical;
+    }
+    .warning-text{
+      color:#ffaa00;
+      font-size:12px;
+      margin-top:-8px;
+      margin-bottom:15px;
+    }
+    .modal-buttons{
+      display:flex;
+      gap:12px;
+      margin-top:20px;
+    }
+    .modal-btn{
+      flex:1;
+      padding:12px;
+      border-radius:40px;
+      border:none;
+      font-weight:bold;
+      cursor:pointer;
+      transition:0.2s;
+    }
+    .modal-btn.cancel{
+      background:#2a3a60;
+      color:#fff;
+    }
+    .modal-btn.confirm{
+      background:linear-gradient(90deg,#1e3c72,#2a5298);
+      color:#fff;
+    }
+    .toast{
+      position:fixed;
+      bottom:90px;
+      left:50%;
+      transform:translateX(-50%) translateY(20px);
+      background:#2a3a60;
+      border-radius:40px;
+      padding:8px 18px;
+      font-family:'JetBrains Mono',monospace;
+      font-size:12px;
+      color:#fff;
+      z-index:3000;
+      opacity:0;
+      transition:all 0.3s;
+      pointer-events:none;
+    }
+    .toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+    .waiting-container{
+      text-align:center;
+    }
+    @media(max-width:550px){
+      .container{padding:20px}
+      h1{font-size:24px}
+      .detail-row{flex-direction:column;align-items:flex-start;gap:5px}
+      .detail-value{text-align:left}
+    }
+  </style>
+</head>
+<body>
+<div class="container" id="mainContainer">
+  <div id="waitingView" style="display:none;">
+    <div class="success-icon">⏳</div>
+    <h1>Menunggu Konfirmasi Pembayaran</h1>
+    <p style="text-align:center;color:#a0b0c0" id="waitingStatus"></p>
+    <p style="text-align:center" id="waitingOrderId"></p>
+    <p style="text-align:center">Silakan tunggu beberapa saat, atau cek kembali nanti.</p>
+    <a href="/" class="back-link">← Kembali ke Beranda</a>
+  </div>
+  <div id="successView" style="display:none;">
+    <div class="success-icon">✅</div>
+    <h1>Pembayaran Berhasil!</h1>
+    <p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
+    <div class="panel-card" id="panelDetails"></div>
+    <div class="btn-group">
+      <a href="#" id="panelUrlBtn" class="btn" target="_blank"><i class="fas fa-external-link-alt"></i> Buka Panel</a>
+      <button class="btn refund-btn" id="refundBtn"><i class="fas fa-undo-alt"></i> Minta Refund (20 Menit)</button>
+    </div>
+    <a href="/" class="back-link">← Kembali ke Beranda</a>
+  </div>
+  <div id="errorView" style="display:none;">
+    <div class="success-icon">❌</div>
+    <h1>Error</h1>
+    <p id="errorMessage"></p>
+    <a href="/" class="back-link">← Kembali ke Beranda</a>
+  </div>
+</div>
+
+<div id="refundModal" class="modal">
+  <div class="modal-content">
+    <h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2>
+    <p>Silakan isi data berikut untuk pemrosesan refund.</p>
+    <div class="modal-input-group">
+      <label>Nomor Dana</label>
+      <input type="text" id="danaNumber" placeholder="Contoh: 081234567890" required>
+    </div>
+    <div class="modal-input-group">
+      <label>Nama Akun Dana</label>
+      <input type="text" id="danaName" placeholder="Nama sesuai rekening Dana" required>
+    </div>
+    <div class="modal-input-group">
+      <label>Alasan Refund (Opsional)</label>
+      <textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea>
+    </div>
+    <div class="warning-text">⚠️ Admin tidak bertanggung jawab jika data yang dimasukkan salah. Pastikan data sesuai dengan akun Dana Anda.</div>
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button>
+      <button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast">✅ Teks disalin!</div>
+
+<script>
+  // Data dari server
+  const callbackData = {{callbackData}};
+
+  if (callbackData.error) {
+    // Tampilkan error
+    document.getElementById('errorView').style.display = 'block';
+    document.getElementById('errorMessage').innerText = callbackData.error;
+  } else if (callbackData.status !== 'paid' && callbackData.status !== 'completed') {
+    // Tampilkan halaman menunggu
+    document.getElementById('waitingView').style.display = 'block';
+    document.getElementById('waitingStatus').innerText = 'Status: ' + callbackData.status;
+    document.getElementById('waitingOrderId').innerHTML = 'Order ID: ' + callbackData.order_id;
+    // Auto reload setiap 5 detik
+    setTimeout(() => window.location.reload(), 5000);
+  } else {
+    // Tampilkan halaman sukses
+    document.getElementById('successView').style.display = 'block';
+    const panel = callbackData.panel;
+    const user = callbackData.user;
+    const orderId = callbackData.order_id;
+
+    // Isi detail panel
+    const panelDetails = document.getElementById('panelDetails');
+    panelDetails.innerHTML = `
+      <div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${escapeHtml(user.username)}</code><button class="copy-btn" data-copy="${escapeHtml(user.username)}">Salin</button></div></div>
+      <div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${escapeHtml(user.password)}</code><button class="copy-btn" data-copy="${escapeHtml(user.password)}">Salin</button></div></div>
+      <div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${escapeHtml(user.email)}</code></div></div>
+      <div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${escapeHtml(panel.name)}</div></div>
+      <div class="detail-row"><span class="detail-label">💾 RAM</span><div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div></div>
+      <div class="detail-row"><span class="detail-label">💿 Disk</span><div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div></div>
+      <div class="detail-row"><span class="detail-label">⚙️ CPU</span><div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div></div>
+    `;
+    document.getElementById('panelUrlBtn').href = panel.panelUrl;
+
+    // Event listener untuk tombol refund
+    document.getElementById('refundBtn').onclick = () => openRefundModal(orderId);
+  }
+
+  // Helper escapeHtml
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
+  }
+
+  // Fungsi copy dan toast
+  function showToast() {
+    const toast = document.getElementById('toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 1500);
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.classList && e.target.classList.contains('copy-btn')) {
+      const text = e.target.getAttribute('data-copy');
+      navigator.clipboard.writeText(text).then(() => showToast());
+    }
+  });
+
+  // Modal refund
+  let currentOrderId = null;
+  function openRefundModal(orderId) {
+    currentOrderId = orderId;
+    document.getElementById('danaNumber').value = '';
+    document.getElementById('danaName').value = '';
+    document.getElementById('refundReason').value = '';
+    document.getElementById('refundModal').style.display = 'flex';
+  }
+  function closeRefundModal() {
+    document.getElementById('refundModal').style.display = 'none';
+    currentOrderId = null;
+  }
+  document.getElementById('submitRefundBtn').addEventListener('click', async function() {
+    const danaNumber = document.getElementById('danaNumber').value.trim();
+    const danaName = document.getElementById('danaName').value.trim();
+    const reason = document.getElementById('refundReason').value.trim();
+    if (!danaNumber || !danaName) {
+      alert('Nomor Dana dan Nama Akun Dana harus diisi!');
+      return;
+    }
+    if (!confirm('Apakah Anda yakin ingin mengajukan refund?\n\nNomor Dana: ' + danaNumber + '\nNama Akun: ' + danaName + '\nRefund hanya dapat diajukan dalam 20 menit setelah pembayaran.')) return;
+    const btn = this;
+    const originalText = btn.innerText;
+    btn.innerText = 'Memproses...';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/refund-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: currentOrderId,
+          dana_number: danaNumber,
+          dana_name: danaName,
+          reason: reason
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Permintaan refund telah dikirim. Menunggu persetujuan admin.');
+        window.location.href = '/';
+      } else {
+        alert('Gagal: ' + (data.message || 'Unknown error'));
+        closeRefundModal();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan, coba lagi nanti.');
+      closeRefundModal();
+    } finally {
+      btn.innerText = originalText;
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
