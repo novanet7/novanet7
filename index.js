@@ -1,5 +1,6 @@
 const express = require('express');
 const fetch = require('node-fetch');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const session = require('express-session');
@@ -28,6 +29,8 @@ if (!MUSTIKA_API_KEY) {
   process.exit(1);
 }
 const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
+const PROXY_URL = 'https://noble:fp_5dce2cbd8898b723@p-8b9327a0.noble-ip.com:3129';
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -896,23 +899,35 @@ async function deletePterodactylServer(serverId) {
 // FUNGSI MUSTIKA PAYMENT
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
+  const apiUrl = 'https://mustikapayment.com/api/createpay';
+  const params = new URLSearchParams();
+  params.append('amount', amount.toString());
+  params.append('redirect_url', redirect_url);
+  params.append('customer_name', customer_name);
+  params.append('product_name', product_name);
+
   try {
-    const result = await mustikaPay.createPaymentLink({
-      title: product_name,
-      amount: amount,
-      methods: "QRIS",
-      redirect_url: redirect_url,
-      customer_name: customer_name
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-Api-Key': MUSTIKA_API_KEY,  // pastikan variabel ini ada
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString(),
+      agent: proxyAgent   // <-- ini yang membuat request melalui proxy
     });
-    if (result.status === 'success') {
+
+    const data = await response.json();
+    if (data.status === 'success' && data.payment_link) {
       return {
         success: true,
-        payment_link: result.payment_link,
-        ref_no: result.ref_no,
-        amount: result.amount
+        payment_link: data.payment_link,
+        ref_no: data.ref_no,
+        amount: data.amount
       };
+    } else {
+      throw new Error(data.message || 'Gagal membuat transaksi');
     }
-    throw new Error(result.message || 'Gagal membuat transaksi');
   } catch (error) {
     console.error('Create Mustika Payment error:', error);
     return { success: false, error: error.message };
