@@ -22,8 +22,12 @@ const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
-const mp = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
-
+const MUSTIKA_API_KEY = config.MUSTIKA_API_KEY;
+if (!MUSTIKA_API_KEY) {
+  console.error('❌ MUSTIKA_API_KEY tidak ditemukan di setting.js');
+  process.exit(1);
+}
+const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -893,7 +897,7 @@ async function deletePterodactylServer(serverId) {
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   try {
-    const result = await mp.createPaymentLink({
+    const result = await mustikaPay.createPaymentLink({
       title: product_name,
       amount: amount,
       methods: "QRIS",
