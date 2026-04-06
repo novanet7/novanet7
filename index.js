@@ -14,63 +14,16 @@ const multer = require('multer');
 const { Octokit } = require('@octokit/rest');
 const config = require('./setting.js');
 const jwt = require('jsonwebtoken');
-const { ProxyAgent } = require('proxy-agent');
+const MustikaPay = require('mustikapay-node');
+
 const app = express();
 const SITE_NAME = config.SITE_NAME || 'novanet';
 const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
+const mp = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
 
-// ==================== KONFIGURASI QRISPY ====================
-const QRISPY_API_URL = 'https://api.qrispy.id';
-const QRISPY_API_TOKEN = config.QRISPY_API_TOKEN;
-// Daftar proxy publik (IP:port) dari yang kamu berikan
-const PROXY_LIST = [
-  '138.68.60.8:80',
-  '52.188.28.218:3128',
-  '154.3.236.202:3128',
-  '20.210.113.32:8123',
-  '211.230.49.122:3128',
-  '91.98.232.106:10808',
-  '168.119.126.160:35856',
-  '91.107.160.34:5050',
-  '77.239.97.182:31994',
-  '161.35.70.249:8080',
-  '46.161.6.165:8080',
-  '88.99.69.237:5043',
-  '103.35.188.243:3128',
-  '62.113.119.14:8080',
-  '185.184.120.1:29320',
-  '193.221.203.121:4145',
-  '193.168.198.216:16777',
-  '198.199.86.11:3128',
-  '20.205.61.143:80',
-  '159.203.61.169:80',
-  '202.181.148.64:54101',
-  '193.221.203.121:1080',
-  '193.221.203.121:8888',
-  '134.209.29.120:3128',
-  '128.199.202.122:8080',
-  '139.162.78.109:80',
-  '135.181.107.134:41241',
-  '88.99.29.50:5132',
-  '91.107.157.68:20143',
-  '88.99.30.148:5051',
-  '193.221.203.121:8080',
-  '190.6.54.12:6969',
-  '192.145.31.160:8888',
-  '88.99.30.237:5061',
-  '195.201.2.238:56005',
-  '91.107.170.243:6825',
-  '43.225.151.30:20505',
-  '65.109.217.101:3534',
-  '77.233.212.4:57339',
-  '187.86.159.54:3128',
-  '85.192.56.4:48716',
-  '187.190.114.57:999',
-  '78.47.253.162:1083'
-];
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -80,7 +33,7 @@ let owner, repo;
 const sessionCache = new Map();
 
 // ============================================================================
-// KELAS GITHUB SESSION STORE (tidak berubah)
+// KELAS GITHUB SESSION STORE
 // ============================================================================
 class GitHubSessionStore extends session.Store {
   constructor(octokit, owner, repo, branch, sessionPath) {
@@ -220,13 +173,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(cookieParser());
 
-// Fungsi untuk mengambil proxy secara acak
-function getRandomProxy() {
-  const randomIndex = Math.floor(Math.random() * PROXY_LIST.length);
-  return `http://${PROXY_LIST[randomIndex]}`;
-}
 // ============================================================================
-// TELEGRAM NOTIFIER (tidak berubah)
+// TELEGRAM NOTIFIER
 // ============================================================================
 async function sendTelegramError(error, context = {}) {
   try {
@@ -263,7 +211,7 @@ async function sendTelegramError(error, context = {}) {
 }
 
 // ============================================================================
-// FUNGSI BACA/TULIS GITHUB (tidak berubah)
+// FUNGSI BACA/TULIS GITHUB (DENGAN RETRY)
 // ============================================================================
 async function readGitHubFile(filePath) {
   if (!octokit) throw new Error('GitHub tidak tersedia');
@@ -312,7 +260,7 @@ async function writeGitHubFileWithRetry(filePath, content, maxRetries = 3) {
 }
 
 // ============================================================================
-// MANAJEMEN ORDER DI GITHUB (tambah field qris_id, qris_image_url)
+// MANAJEMEN ORDER DI GITHUB
 // ============================================================================
 async function getOrders() {
   const filePath = `${GITHUB_PATH}/orders.json`.replace(/\/+/g, '/');
@@ -366,7 +314,7 @@ async function deleteOrdersByEmail(email) {
 }
 
 // ============================================================================
-// MANAJEMEN REFUND REQUEST (tidak berubah)
+// MANAJEMEN REFUND REQUEST
 // ============================================================================
 async function getRefundRequests() {
   const filePath = `${GITHUB_PATH}/refund_requests.json`.replace(/\/+/g, '/');
@@ -403,7 +351,7 @@ async function findRefundRequest(orderId) {
 }
 
 // ============================================================================
-// RATE LIMITING UNTUK REGISTER (tidak berubah)
+// RATE LIMITING UNTUK REGISTER (DISIMPAN DI GITHUB)
 // ============================================================================
 const RATE_LIMIT_FILE = `${GITHUB_PATH}/rate_limits.json`.replace(/\/+/g, '/');
 
@@ -481,7 +429,7 @@ async function clearRegisterAttempts(ip) {
 }
 
 // ============================================================================
-// MANAJEMEN USER PER FILE (tidak berubah)
+// MANAJEMEN USER PER FILE
 // ============================================================================
 const USERS_INDEX_PATH = `${GITHUB_PATH}/users_index.json`.replace(/\/+/g, '/');
 async function getUsersIndex() {
@@ -535,7 +483,7 @@ async function findUserById(id) {
 }
 
 // ============================================================================
-// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS (tidak berubah)
+// FUNGSI AMBIL FOTO RANDOM DARI WAIFU.PICS
 // ============================================================================
 async function fetchRandomAvatarFromWaifu() {
   try {
@@ -559,7 +507,7 @@ async function fetchRandomAvatarFromWaifu() {
 }
 
 // ============================================================================
-// ID RANDOM 4 DIGIT (tidak berubah)
+// ID RANDOM 4 DIGIT (1000-9999) & UNIK
 // ============================================================================
 async function generateUniqueRandomId() {
   const index = await getUsersIndex();
@@ -577,7 +525,7 @@ async function generateUniqueRandomId() {
 }
 
 // ============================================================================
-// CREATE USER (tidak berubah)
+// CREATE USER
 // ============================================================================
 async function createUser(userData) {
   const newId = await generateUniqueRandomId();
@@ -611,13 +559,6 @@ async function createUser(userData) {
   index.push({ id: newId, email: newUser.email, name: newUser.name });
   await saveUsersIndex(index);
   
-  const verifyUser = await readUserFile(newId);
-  if (!verifyUser || verifyUser.photo !== photoPath) {
-    console.error(`⚠️ Verifikasi gagal untuk user ${newId}`);
-  } else {
-    console.log(`✅ Verifikasi user ${newId} OK, photo: ${verifyUser.photo}`);
-  }
-  
   return newUser;
 }
 
@@ -649,7 +590,7 @@ async function deleteUserById(id) {
 }
 
 // ============================================================================
-// UPLOAD AVATAR KE GITHUB (tidak berubah)
+// UPLOAD AVATAR KE GITHUB
 // ============================================================================
 async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
   if (!octokit) throw new Error('GitHub tidak tersedia');
@@ -669,6 +610,7 @@ async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
     branch: GITHUB_BRANCH
   });
   
+  // Verifikasi
   try {
     const { data } = await octokit.repos.getContent({
       owner, repo, path: avatarPath, ref: GITHUB_BRANCH
@@ -715,7 +657,7 @@ async function deleteUserAvatar(userId) {
 }
 
 // ============================================================================
-// PASSPORT CONFIGURATION (tidak berubah)
+// PASSPORT CONFIGURATION
 // ============================================================================
 passport.serializeUser((user, done) => {
   done(null, user.id);
@@ -769,7 +711,7 @@ function isAdmin(req, res, next) {
 }
 
 // ============================================================================
-// CREATE / FIND PTERODACTYL USER (tidak berubah)
+// CREATE / FIND PTERODACTYL USER
 // ============================================================================
 async function findPterodactylUserByEmail(email) {
   try {
@@ -828,7 +770,7 @@ async function createPterodactylUser(email, username, password) {
 }
 
 // ============================================================================
-// CREATE PTERODACTYL SERVER (tidak berubah)
+// CREATE PTERODACTYL SERVER
 // ============================================================================
 async function createPterodactylServer(userId, panelType, username, email) {
   try {
@@ -923,7 +865,7 @@ async function createPterodactylServer(userId, panelType, username, email) {
 }
 
 // ============================================================================
-// DELETE PTERODACTYL SERVER (tidak berubah)
+// DELETE PTERODACTYL SERVER
 // ============================================================================
 async function deletePterodactylServer(serverId) {
   try {
@@ -946,98 +888,35 @@ async function deletePterodactylServer(serverId) {
   }
 }
 
-async function generateQrispyQR(amount, paymentReference) {
+// ============================================================================
+// FUNGSI MUSTIKA PAYMENT
+// ============================================================================
+async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   try {
-    const token = (QRISPY_API_TOKEN || '').trim();
-    if (!token) throw new Error('Token QRISPY kosong');
-
-    // Pilih proxy acak
-    const proxyUrl = getRandomProxy();
-    console.log(`Menggunakan proxy: ${proxyUrl}`);
-
-const agent = new ProxyAgent(proxyUrl);
-
-    const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/generate`, {
-      method: 'POST',
-      agent: agent,   // <-- kunci: menggunakan proxy
-      headers: {
-        'X-API-Token': token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': `${SITE_NAME}/1.0 (Node.js)`
-      },
-      body: JSON.stringify({ amount, payment_reference: paymentReference })
+    const result = await mp.createPaymentLink({
+      title: product_name,
+      amount: amount,
+      methods: "QRIS",
+      redirect_url: redirect_url,
+      customer_name: customer_name
     });
-
-    const text = await response.text();
-    console.log('QRIS Response Status:', response.status);
-    console.log('QRIS Response Body (first 200):', text.substring(0, 200));
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
+    if (result.status === 'success') {
+      return {
+        success: true,
+        payment_link: result.payment_link,
+        ref_no: result.ref_no,
+        amount: result.amount
+      };
     }
-    
-    const data = JSON.parse(text);
-    if (data.status !== 'success') {
-      throw new Error(data.message || 'Gagal generate QRIS');
-    }
-    return {
-      success: true,
-      qris_id: data.data.qris_id,
-      qris_image_url: data.data.qris_image_url,
-      qris_image_base64: data.data.qris_image_base64,
-      expired_at: data.data.expired_at,
-      expires_in_seconds: data.data.expires_in_seconds
-    };
+    throw new Error(result.message || 'Gagal membuat transaksi');
   } catch (error) {
-    console.error('Generate QRIS error:', error);
-    await sendTelegramError(error, { fungsi: 'generateQrispyQR', amount, paymentReference });
+    console.error('Create Mustika Payment error:', error);
     return { success: false, error: error.message };
   }
 }
 
-async function checkQrispyStatus(qrisId) {
-  try {
-    const response = await fetch(`${QRISPY_API_URL}/api/payment/qris/${qrisId}/status`, {
-      method: 'GET',
-      headers: {
-        'X-API-Token': QRISPY_API_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
-    const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(data.message || 'Gagal cek status');
-    }
-    // data.data berisi: { qris_id, amount, status, ... }
-    return {
-      success: true,
-      status: data.data.status, // pending, paid, expired
-      qris_id: data.data.qris_id,
-      amount: data.data.amount
-    };
-  } catch (error) {
-    console.error('Check QRIS status error:', error);
-    await sendTelegramError(error, { fungsi: 'checkQrispyStatus', qrisId });
-    return { success: false, status: 'error' };
-  }
-}
-
 // ============================================================================
-// CANCEL / REFUND ORDER (SESUAI STATUS) - tetap pakai Pakasir? 
-// Untuk Qrispy, tidak ada endpoint cancel di dokumentasi. Jadi refund tetap manual via admin.
-// Fungsi cancelPakasirTransaction tetap dipertahankan untuk order pending (belum dibayar) 
-// karena Qrispy tidak menyediakan cancel. Kita bisa mengabaikan cancel atau biarkan saja.
-// ============================================================================
-async function cancelPakasirTransaction(orderId, amount) {
-  // Fungsi ini tidak akan dipakai lagi karena tidak ada transaksi Pakasir.
-  // Tetapi kita biarkan untuk kompatibilitas jika ada panggilan dari admin (cancel order pending).
-  // Untuk order Qrispy, kita hanya bisa menghapus order dari database.
-  return { success: true, message: 'Order dihapus dari database' };
-}
-
-// ============================================================================
-// HELPER FUNCTIONS (tidak berubah)
+// HELPER FUNCTIONS
 // ============================================================================
 function generateRandomPassword(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -1065,11 +944,11 @@ function getGravatarUrl(email, size = 200) {
 }
 
 // ============================================================================
-// SETUP ROUTES (SEMUA ROUTE DENGAN HTML LENGKAP) - MODIFIKASI BAGIAN PAYMENT
+// SETUP ROUTES
 // ============================================================================
 function setupRoutes(app) {
   // ==========================================================================
-  // SITEMAP.XML & ROBOTS.TXT (tidak berubah)
+  // SITEMAP.XML & ROBOTS.TXT
   // ==========================================================================
   app.get('/sitemap.xml', async (req, res) => {
     const now = new Date().toISOString().split('T')[0];
@@ -1107,7 +986,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // API ROUTES - MODIFIKASI CREATE ORDER DAN CHECK PAYMENT
+  // API ROUTES
   // ==========================================================================
   app.post('/api/create-order', isAuthenticated, async (req, res) => {
     try {
@@ -1130,12 +1009,12 @@ Crawl-delay: 1
       };
       const amount = priceMap[panelType] || 500;
       const orderId = generateOrderId();
-      const paymentReference = orderId; // gunakan order_id sebagai payment_reference
+      const redirectUrl = `${config.URL}/payment-callback`;
       
-      // Generate QRIS via Qrispy
-      const qrisResult = await generateQrispyQR(amount, paymentReference);
-      if (!qrisResult.success) {
-        return res.status(500).json({ success: false, message: 'Gagal membuat QRIS: ' + qrisResult.error });
+      // Panggil API Mustika Payment
+      const mustikaRes = await createMustikaPayment(amount, redirectUrl, email, `${panelType.toUpperCase()} Panel`);
+      if (!mustikaRes.success) {
+        return res.status(500).json({ success: false, message: mustikaRes.error || 'Gagal membuat transaksi pembayaran' });
       }
       
       const order = {
@@ -1146,19 +1025,11 @@ Crawl-delay: 1
         status: 'pending',
         created_at: new Date().toISOString(),
         panel_created: false,
-        qris_id: qrisResult.qris_id,
-        qris_image_url: qrisResult.qris_image_url,
-        qris_image_base64: qrisResult.qris_image_base64,
-        expired_at: qrisResult.expired_at
+        ref_no: mustikaRes.ref_no  // simpan ref_no dari Mustika
       };
       await addOrder(order);
-      res.json({
-        success: true,
-        order_id: orderId,
-        qris_image_url: qrisResult.qris_image_url,
-        qris_image_base64: qrisResult.qris_image_base64,
-        expired_at: qrisResult.expired_at
-      });
+      
+      res.json({ success: true, payment_url: mustikaRes.payment_link, order_id: orderId });
     } catch (error) {
       console.error('Create order error:', error);
       await sendTelegramError(error, { route: '/api/create-order', body: req.body });
@@ -1166,60 +1037,10 @@ Crawl-delay: 1
     }
   });
 
-  // Endpoint untuk cek status via order_id (polling)
-  app.get('/api/order-status/:orderId', async (req, res) => {
-    try {
-      const { orderId } = req.params;
-      const order = await findOrderById(orderId);
-      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      if (!order.qris_id) return res.status(400).json({ success: false, message: 'QRIS ID tidak ditemukan' });
-      
-      const statusResult = await checkQrispyStatus(order.qris_id);
-      if (!statusResult.success) {
-        return res.status(500).json({ success: false, message: 'Gagal cek status' });
-      }
-      // Update status order jika berbeda
-      if (order.status !== statusResult.status) {
-        await updateOrder(orderId, { status: statusResult.status });
-      }
-      res.json({
-        success: true,
-        status: statusResult.status,
-        order_id: orderId
-      });
-    } catch (error) {
-      console.error('Order status error:', error);
-      await sendTelegramError(error, { route: '/api/order-status', orderId });
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  });
-
-  // Endpoint lama untuk kompatibilitas (check-payment) - diubah menggunakan qris_id
+  // Endpoint check-payment tidak lagi digunakan karena kita mengandalkan callback.
+  // Namun tetap ada untuk kompatibilitas (selalu mengembalikan status pending)
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
-    try {
-      const { orderId, amount } = req.params;
-      const order = await findOrderById(orderId);
-      if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      if (!order.qris_id) return res.status(400).json({ success: false, message: 'QRIS ID tidak ditemukan' });
-      
-      const statusResult = await checkQrispyStatus(order.qris_id);
-      if (!statusResult.success) {
-        return res.status(500).json({ success: false, message: 'Gagal cek status' });
-      }
-      if (order.status !== statusResult.status) {
-        await updateOrder(orderId, { status: statusResult.status });
-      }
-      res.json({
-        success: true,
-        status: statusResult.status,
-        order_id: orderId,
-        transaction: { status: statusResult.status }
-      });
-    } catch (error) {
-      console.error('Check payment error:', error);
-      await sendTelegramError(error, { route: '/api/check-payment', orderId, amount });
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
+    res.json({ success: true, status: 'pending', message: 'Gunakan callback untuk konfirmasi pembayaran' });
   });
 
   app.post('/api/create-panel', async (req, res) => {
@@ -1228,14 +1049,8 @@ Crawl-delay: 1
       if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      
-      // Cek status via Qrispy
-      if (!order.qris_id) return res.status(400).json({ success: false, message: 'QRIS ID tidak ditemukan' });
-      const statusResult = await checkQrispyStatus(order.qris_id);
-      if (!statusResult.success || (statusResult.status !== 'paid' && statusResult.status !== 'completed')) {
-        return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil. Status: ' + (statusResult.status || 'unknown') });
-      }
       if (order.panel_created) return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
+      if (order.status !== 'paid') return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil' });
       
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
@@ -1270,19 +1085,142 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // PAYMENT CALLBACK (MODIFIKASI: menampilkan QR atau sukses)
+  // PAYMENT CALLBACK (MENERIMA POST & GET)
   // ==========================================================================
+  app.post('/payment-callback', async (req, res) => {
+    // Proses callback dari Mustika (biasanya POST)
+    // Data yang dikirim tidak diketahui, asumsikan ada ref_no
+    const { ref_no, status, order_id } = req.body;
+    if (!ref_no && !order_id) {
+      return res.status(400).send('Missing ref_no or order_id');
+    }
+    // Cari order berdasarkan ref_no
+    let order = null;
+    if (ref_no) {
+      const orders = await getOrders();
+      order = orders.find(o => o.ref_no === ref_no);
+    } else if (order_id) {
+      order = await findOrderById(order_id);
+    }
+    if (!order) {
+      return res.status(404).send('Order tidak ditemukan');
+    }
+    // Jika sudah diproses, langsung sukses
+    if (order.panel_created) {
+      return res.redirect(`/profile?order=${order.order_id}`);
+    }
+    // Proses pembuatan panel
+    await processSuccessfulPayment(order, res);
+  });
+
+  // Endpoint GET untuk kompatibilitas (jika Mustika redirect dengan GET)
   app.get('/payment-callback', async (req, res) => {
-    const { order_id } = req.query;
-    if (!order_id) return res.redirect('/?error=missing_order');
-    const order = await findOrderById(order_id);
-    if (!order) return res.redirect('/?error=order_not_found');
-    
-    // Jika panel sudah dibuat, tampilkan halaman sukses
-    if (order.panel_created && order.status === 'paid') {
-      const panel = order.panel_data;
-      const user = order.user_data;
-      return res.send(`
+    const { ref_no, order_id, status } = req.query;
+    if (!ref_no && !order_id) {
+      return res.redirect('/?error=missing_params');
+    }
+    let order = null;
+    if (ref_no) {
+      const orders = await getOrders();
+      order = orders.find(o => o.ref_no === ref_no);
+    } else if (order_id) {
+      order = await findOrderById(order_id);
+    }
+    if (!order) {
+      return res.redirect('/?error=order_not_found');
+    }
+    if (order.panel_created) {
+      return res.redirect(`/profile?order=${order.order_id}`);
+    }
+    await processSuccessfulPayment(order, res);
+  });
+
+  // Fungsi bersama untuk memproses pembayaran sukses
+  async function processSuccessfulPayment(order, res) {
+    try {
+      // Update status order menjadi paid
+      await updateOrder(order.order_id, { status: 'paid' });
+      
+      // Buat panel
+      const username = order.email.split('@')[0];
+      const randomPassword = generateRandomPassword(8);
+      const user = await findUserByEmail(order.email);
+      let pterodactylUserId = null;
+      let userResult = null;
+      const existingUser = await findPterodactylUserByEmail(order.email);
+      if (existingUser.success) {
+        pterodactylUserId = existingUser.userId;
+        userResult = { success: true, userId: pterodactylUserId };
+        if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
+      } else {
+        userResult = await createPterodactylUser(order.email, username, randomPassword);
+        if (!userResult.success) throw new Error('Gagal membuat user');
+        pterodactylUserId = userResult.userId;
+        if (user) await updateUser(user.id, { pterodactylUserId });
+      }
+      const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
+      if (!panelResult.success) throw new Error('Gagal membuat server');
+      await updateOrder(order.order_id, {
+        panel_created: true,
+        panel_data: panelResult,
+        user_data: { email: order.email, username: username, password: randomPassword }
+      });
+      if (user) {
+        const purchased = user.purchasedPanels || [];
+        purchased.push({
+          order_id: order.order_id,
+          panel_type: order.panel_type,
+          panel_url: panelResult.panelUrl,
+          username: username,
+          password: randomPassword,
+          created_at: new Date().toISOString()
+        });
+        await updateUser(user.id, { purchasedPanels: purchased });
+      }
+      // Kirim notifikasi Telegram ke owner
+      const now = new Date();
+      const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
+      const dayName = formatterDay.format(now);
+      const formatterDate = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jakarta' });
+      const dateStr = formatterDate.format(now).replace(/\//g, '-');
+      const formatterTime = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' });
+      const timeStr = formatterTime.format(now);
+      const formattedTime = `${dayName}, ${dateStr} ${timeStr}`;
+      const ownerMsg = `🎉 <b>PANEL BARU DIBUAT</b> 🎉\n\n` +
+        `📅 <b>Waktu</b> : ${formattedTime}\n` +
+        `📧 <b>Email</b> : <code>${order.email}</code>\n` +
+        `👤 <b>Username</b> : <code>${username}</code>\n` +
+        `📦 <b>Tipe Panel</b> : ${order.panel_type.toUpperCase()}\n` +
+        `💰 <b>Harga</b> : Rp ${order.amount.toLocaleString('id-ID')}\n` +
+        `🆔 <b>Server ID</b> : <code>${panelResult.serverId}</code>\n` +
+        `🏷️ <b>Nama Server</b> : ${panelResult.name}`;
+      try {
+        await fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: config.OWNER_ID,
+            text: ownerMsg,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            reply_markup: { inline_keyboard: [[{ text: '🛒 Beli Panel', url: config.URL }]] }
+          })
+        });
+      } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
+      
+      // Tampilkan halaman sukses
+      const updatedOrder = await findOrderById(order.order_id);
+      const panel = updatedOrder.panel_data;
+      const userCred = updatedOrder.user_data;
+      res.send(generateSuccessPage(updatedOrder, panel, userCred));
+    } catch (error) {
+      console.error('Callback processing error:', error);
+      res.send(`<html><body><h2>Error</h2><p>Hubungi admin. Order ID: ${order.order_id}</p><a href="/">Back</a></body></html>`);
+    }
+  }
+
+  function generateSuccessPage(order, panel, userCred) {
+    return `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1292,7 +1230,6 @@ Crawl-delay: 1
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
-/* (sama seperti sebelumnya) */
 *{margin:0;padding:0;box-sizing:border-box}
 body{
 background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
@@ -1559,17 +1496,17 @@ h1{font-size:24px}
 <h1>Pembayaran Berhasil!</h1>
 <p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
 <div class="panel-card">
-<div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${user.username}</code><button class="copy-btn" data-copy="${user.username}">Salin</button></div></div>
-<div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${user.password}</code><button class="copy-btn" data-copy="${user.password}">Salin</button></div></div>
-<div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${user.email}</code></div></div>
-<div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${panel.name}</div></div>
+<div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${escapeHTML(userCred.username)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.username)}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${escapeHTML(userCred.password)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.password)}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${escapeHTML(userCred.email)}</code></div></div>
+<div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${escapeHTML(panel.name)}</div></div>
 <div class="detail-row"><span class="detail-label">💾 RAM</span><div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div></div>
 <div class="detail-row"><span class="detail-label">💿 Disk</span><div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div></div>
 <div class="detail-row"><span class="detail-label">⚙️ CPU</span><div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div></div>
 </div>
 <div class="btn-group">
 <a href="${panel.panelUrl}" class="btn" target="_blank"><i class="fas fa-external-link-alt"></i> Buka Panel</a>
-<button class="btn refund-btn" onclick="openRefundModal('${order_id}')"><i class="fas fa-undo-alt"></i> Minta Refund (20 Menit)</button>
+<button class="btn refund-btn" onclick="openRefundModal('${order.order_id}')"><i class="fas fa-undo-alt"></i> Minta Refund (20 Menit)</button>
 </div>
 <a href="/" class="back-link">← Kembali ke Beranda</a>
 </div>
@@ -1585,137 +1522,11 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
 </script>
 </body>
 </html>
-      `);
-    }
-    
-    // Jika belum dibayar, tampilkan QR code dan polling
-    const qrisImage = order.qris_image_base64 || order.qris_image_url;
-    const qrisImageHtml = qrisImage.startsWith('data:') ? `<img src="${qrisImage}" style="width:250px;height:250px;margin:20px auto;display:block;border-radius:16px;border:2px solid #5b8cff;">` : `<img src="${qrisImage}" style="width:250px;height:250px;margin:20px auto;display:block;border-radius:16px;border:2px solid #5b8cff;">`;
-    res.send(`
-<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
-<title>Menunggu Pembayaran - ${SITE_NAME}</title>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{
-background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
-color:#fff;
-font-family:'Rajdhani',sans-serif;
-min-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-padding:20px;
-position:relative;
-}
-body::before{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
-background-size:cover;
-opacity:0.2;
-z-index:-2;
-}
-body::after{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.65);
-z-index:-1;
-}
-.container{
-max-width:500px;
-width:100%;
-background:rgba(15,25,45,0.6);
-backdrop-filter:blur(12px);
-border-radius:32px;
-padding:35px;
-border:1px solid rgba(91,140,255,0.4);
-box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
-text-align:center;
-}
-h2{
-font-family:'Orbitron';
-color:#5b8cff;
-margin-bottom:20px;
-}
-.status{
-font-size:18px;
-margin:20px 0;
-}
-.spinner{
-width:40px;
-height:40px;
-border:4px solid rgba(255,255,255,0.3);
-border-top-color:#5b8cff;
-border-radius:50%;
-animation:spin 1s linear infinite;
-margin:20px auto;
-}
-@keyframes spin{
-to{transform:rotate(360deg);}
-}
-.back-link{
-display:inline-block;
-margin-top:20px;
-color:#8a9bb0;
-text-decoration:none;
-}
-</style>
-</head>
-<body>
-<div class="container">
-<h2><i class="fas fa-qrcode"></i> Scan QRIS untuk Membayar</h2>
-${qrisImageHtml}
-<div class="status" id="statusText">⏳ Menunggu pembayaran...</div>
-<div class="spinner" id="spinner"></div>
-<p style="font-size:12px;color:#aaa;">Order ID: ${order_id}</p>
-<p style="font-size:12px;color:#aaa;">Jumlah: Rp ${order.amount.toLocaleString('id-ID')}</p>
-<a href="/" class="back-link">← Kembali ke Beranda</a>
-</div>
-<script>
-let pollInterval;
-function checkPayment() {
-  fetch('/api/order-status/${order_id}')
-    .then(res => res.json())
-    .then(data => {
-      if (data.success && (data.status === 'paid' || data.status === 'completed')) {
-        clearInterval(pollInterval);
-        document.getElementById('statusText').innerHTML = '✅ Pembayaran berhasil! Mengalihkan...';
-        document.getElementById('spinner').style.display = 'none';
-        setTimeout(() => {
-          window.location.href = '/payment-callback?order_id=${order_id}';
-        }, 1500);
-      } else if (data.status === 'expired') {
-        clearInterval(pollInterval);
-        document.getElementById('statusText').innerHTML = '❌ QRIS sudah kadaluarsa. Silakan buat order baru.';
-        document.getElementById('spinner').style.display = 'none';
-      }
-    })
-    .catch(err => console.error(err));
-}
-pollInterval = setInterval(checkPayment, 3000);
-checkPayment();
-</script>
-</body>
-</html>
-    `);
-  });
+`;
+  }
 
   // ==========================================================================
-  // API REFUND ORDER (tidak banyak berubah)
+  // API REFUND ORDER (DIUBAH)
   // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
@@ -1723,8 +1534,9 @@ checkPayment();
       if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
+      
+      // Untuk pending: hapus order dari database (tanpa API eksternal)
       if (order.status === 'pending') {
-        // Untuk order pending, hapus dari database (karena tidak ada transaksi nyata di Qrispy)
         const activeOrders = await getOrders();
         const newActive = activeOrders.filter(o => o.order_id !== order_id);
         await saveOrders(newActive);
@@ -1733,6 +1545,8 @@ checkPayment();
         await saveCancelledOrders(cancelledOrders);
         return res.json({ success: true, message: 'Order berhasil dibatalkan' });
       }
+      
+      // Untuk paid: buat refund request (admin harus proses manual di Mustika)
       if (order.status === 'paid' || order.status === 'completed') {
         const isAdminUser = req.user.email === config.ADMIN_EMAIL;
         const paymentTime = new Date(order.created_at).getTime();
@@ -1754,7 +1568,7 @@ checkPayment();
   });
 
   // ==========================================================================
-  // API APPROVE REFUND (ADMIN) - tidak berubah
+  // API APPROVE REFUND (ADMIN) - SAMA SEPERTI SEBELUMNYA
   // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1793,7 +1607,7 @@ checkPayment();
   });
 
   // ==========================================================================
-  // API CANCEL ORDER (ADMIN) - disesuaikan
+  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
   // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1801,8 +1615,8 @@ checkPayment();
       if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      if (order.status !== 'pending') return res.status(400).json({ success: false, message: 'Hanya order pending yang dapat dibatalkan (gunakan refund untuk paid)' });
-      // Hapus order dari database (tidak ada transaksi nyata)
+      if (order.status !== 'pending') return res.status(400).json({ success: false, message: 'Hanya order pending yang dapat dibatalkan' });
+      
       const activeOrders = await getOrders();
       const newActive = activeOrders.filter(o => o.order_id !== order_id);
       await saveOrders(newActive);
@@ -1818,14 +1632,14 @@ checkPayment();
   });
 
   // ==========================================================================
-  // API STATUS (tidak berubah)
+  // API STATUS
   // ==========================================================================
   app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: config.VERSI_WEB, developer: config.DEVELOPER, uptime: process.uptime(), timestamp: Date.now() });
   });
 
   // ==========================================================================
-  // ROUTE AVATAR (tidak berubah)
+  // ROUTE AVATAR
   // ==========================================================================
   app.get('/api/avatar/:userId', isAuthenticated, async (req, res) => {
     const { userId } = req.params;
@@ -1855,7 +1669,7 @@ checkPayment();
     }
   });
 
-// ==========================================================================
+  // ==========================================================================
 // ROUTE LOGIN (GET & POST) – LOGO DIPERBESAR, BLUR LEBIH TIPIS
 // ==========================================================================
 app.get('/login', (req, res) => {
@@ -2152,17 +1966,21 @@ errorDiv.style.display = 'block';
   res.send(html);
 });
 
+  // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
+
     if (await isRegisterBlocked(clientIp)) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
+
     const attempt = await registerAttempt(clientIp);
     if (attempt.blocked) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
+
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       req.flash('error', 'Semua field harus diisi');
@@ -2183,9 +2001,14 @@ errorDiv.style.display = 'block';
         return res.redirect('/register');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
+      // Proses createUser (termasuk upload foto) - sudah menunggu selesai
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
+      
+      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
+      console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
+      
       req.flash('success', 'Registrasi berhasil, silakan login');
       res.redirect('/login');
     } catch (err) {
@@ -2200,7 +2023,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // GOOGLE OAUTH ROUTES (tidak berubah)
+  // GOOGLE OAUTH ROUTES
   // ==========================================================================
   app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
   app.get('/auth/google/callback',
@@ -3827,26 +3650,26 @@ alert('Terjadi kesalahan, coba lagi nanti.');
     res.send(html);
   });
 
-  // ==========================================================================
-  // HALAMAN UTAMA (HOME) – MODIFIKASI: tampilkan QR di modal dengan polling
-  // ==========================================================================
-  app.get('/', async (req, res) => {
-    const isLoggedIn = req.isAuthenticated();
-    const user = isLoggedIn ? req.user : null;
-    const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
-    const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
-    const users = await getUsers();
-    const orders = await getOrders();
-    const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
-    let totalPurchases = 0;
-    if (user) {
-      totalPurchases = orders
-        .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-        .reduce((sum, o) => sum + o.amount, 0);
-    }
-    const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
-    const telegramUsername = (config.DEVELOPER || '').replace('@', '');
-    const html = `
+// ==========================================================================
+// HALAMAN UTAMA (HOME) – BACKGROUND VIDEO, SLIDE-IN ANIMATION
+// ==========================================================================
+app.get('/', async (req, res) => {
+  const isLoggedIn = req.isAuthenticated();
+  const user = isLoggedIn ? req.user : null;
+  const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
+  const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
+  const users = await getUsers();
+  const orders = await getOrders();
+  const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
+  let totalPurchases = 0;
+  if (user) {
+    totalPurchases = orders
+      .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
+      .reduce((sum, o) => sum + o.amount, 0);
+  }
+  const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
+  const telegramUsername = (config.DEVELOPER || '').replace('@', '');
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -3873,7 +3696,6 @@ alert('Terjadi kesalahan, coba lagi nanti.');
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600&family=Orbitron:wght@500;700&family=VT323&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
-/* (semua style sama seperti asli, tidak berubah) */
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body {
   font-family: 'Rajdhani', sans-serif;
@@ -3884,6 +3706,7 @@ body {
   position: relative;
   overflow-x: hidden;
 }
+/* Video Background */
 #bgVideo {
   position: fixed;
   top: 0;
@@ -4523,7 +4346,7 @@ ${isLoggedIn ? `
 <p><strong>${SITE_NAME} cPanel Store</strong> adalah platform pembelian panel Pterodactyl dengan sistem otomatis. Nikmati kemudahan mendapatkan server game atau aplikasi Anda sendiri.</p>
 <p><strong>✨ Fitur Unggulan:</strong></p>
 <ul>
-<li>✅ <strong>Pembayaran Otomatis</strong> – Transaksi via QRIS langsung diproses.</li>
+<li>✅ <strong>Pembayaran Otomatis</strong> – Transaksi via Pakasir (QRIS) langsung diproses.</li>
 <li>✅ <strong>Aktivasi Instan</strong> – Panel aktif segera setelah pembayaran berhasil.</li>
 <li>✅ <strong>Berbagai Pilihan Paket</strong> – RAM dari 1GB hingga 10GB, serta Unlimited.</li>
 <li>✅ <strong>Manajemen Panel Mudah</strong> – Lihat detail login, password, dan URL panel di profil.</li>
@@ -4537,15 +4360,13 @@ ${isLoggedIn ? `
 </div>
 </div>
 </div>
-<!-- Modal untuk menampilkan QR dan polling -->
-<div id="qrModal" class="modal">
+<div id="orderModal" class="modal">
 <div class="modal-content">
-<h2><i class="fas fa-qrcode"></i> Scan QRIS untuk Membayar</h2>
-<div id="qrImageContainer" style="text-align:center; margin:20px 0;"></div>
-<div id="qrStatus" style="margin:10px 0;">⏳ Menunggu pembayaran...</div>
-<div class="spinner" id="qrSpinner" style="margin:10px auto;"></div>
+<h2 id="modalTitle">Konfirmasi Pembelian</h2>
+<div id="modalPackageDetails" style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 15px; margin-bottom: 20px; text-align: left;"></div>
 <div class="modal-buttons">
-<button class="modal-btn cancel" onclick="closeQRModal()">Batal</button>
+<button class="modal-btn cancel" onclick="closeOrderModal()">Batal</button>
+<button class="modal-btn confirm" onclick="submitOrder()">Beli Sekarang</button>
 </div>
 </div>
 </div>
@@ -4562,97 +4383,102 @@ ${isLoggedIn ? `
 </div>
 <script>
 const isLoggedIn = ${isLoggedIn};
-let pollInterval = null;
-let currentOrderId = null;
-
+// Tidak ada lagi partikel canvas, background video sudah ada
 const menuBtn = document.getElementById('menuBtn');
 const statusPanel = document.getElementById('statusPanel');
 const pageContainer = document.getElementById('pageContainer');
 menuBtn.addEventListener('click', () => { menuBtn.classList.toggle('active'); statusPanel.classList.toggle('show'); pageContainer.classList.toggle('blur'); });
-
 const infoBtn = document.getElementById('infoBtn');
 const infoModal = document.getElementById('infoModal');
-function openInfoModal() { infoModal.style.display = 'flex'; }
-function closeInfoModal() { infoModal.style.display = 'none'; }
+function openInfoModal() {
+infoModal.style.display = 'flex';
+}
+function closeInfoModal() {
+infoModal.style.display = 'none';
+}
 infoBtn.addEventListener('click', openInfoModal);
-window.addEventListener('click', (e) => { if (e.target === infoModal) closeInfoModal(); });
-
+window.addEventListener('click', (e) => {
+if (e.target === infoModal) closeInfoModal();
+});
 const supportBtn = document.getElementById('supportBtn');
 const supportDropdown = document.getElementById('supportDropdown');
 if (supportBtn) {
-  supportBtn.addEventListener('click', (e) => { e.stopPropagation(); supportDropdown.classList.toggle('show'); });
+supportBtn.addEventListener('click', (e) => {
+e.stopPropagation();
+supportDropdown.classList.toggle('show');
+});
 }
-window.addEventListener('click', () => { if (supportDropdown) supportDropdown.classList.remove('show'); });
-if (supportDropdown) { supportDropdown.addEventListener('click', (e) => e.stopPropagation()); }
-
+window.addEventListener('click', () => {
+if (supportDropdown) supportDropdown.classList.remove('show');
+});
+if (supportDropdown) {
+supportDropdown.addEventListener('click', (e) => e.stopPropagation());
+}
 const statusContent = document.getElementById('statusContent');
 async function loadStatus(){try{const res=await fetch('/api/status');const data=await res.json();const uptime=formatUptime(data.uptime);statusContent.innerHTML=\`<div class="status-item"><div class="label">STATUS</div><div class="value" style="color:#0f0;">🟢 ONLINE</div></div><div class="status-item"><div class="label">VERSION</div><div class="value">\${data.version}</div></div><div class="status-item"><div class="label">DEV</div><div class="value">\${data.developer}</div></div><div class="status-item"><div class="label">UPTIME</div><div class="value">\${uptime}</div></div><div class="status-item"><div class="label">TIME</div><div class="value">\${new Date(data.timestamp).toLocaleTimeString('id-ID')}</div></div>\`;}catch{statusContent.innerHTML='<div class="status-item">❌ Gagal</div>';}}
 function formatUptime(s){const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return \`\${d}d \${h}h \${m}m \${sec}s\`;}
 loadStatus(); setInterval(loadStatus,30000);
-
 const MAX_BAR_HEIGHT = 70;
 function getColorForHeight(height, maxHeight) {
-  const ratio = Math.min(1, Math.max(0, height / maxHeight));
-  const hue = 120 * (1 - ratio);
-  return \`hsl(\${hue}, 100%, 60%)\`;
+const ratio = Math.min(1, Math.max(0, height / maxHeight));
+const hue = 120 * (1 - ratio);
+return \`hsl(\${hue}, 100%, 60%)\`;
 }
 function generateHeightsAndColors(basePercent, barCount = 24, maxHeight = MAX_BAR_HEIGHT) {
-  const heights = [];
-  const colors = [];
-  for (let i = 0; i < barCount; i++) {
-    let randomFactor = (Math.random() - 0.5) * 0.3;
-    let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
-    let height = (percent / 100) * maxHeight;
-    heights.push(height);
-    colors.push(getColorForHeight(height, maxHeight));
-  }
-  return { heights, colors };
+const heights = [];
+const colors = [];
+for (let i = 0; i < barCount; i++) {
+let randomFactor = (Math.random() - 0.5) * 0.3;
+let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
+let height = (percent / 100) * maxHeight;
+heights.push(height);
+colors.push(getColorForHeight(height, maxHeight));
+}
+return { heights, colors };
 }
 function updateBarsWithColor(bars, basePercent) {
-  if (!bars || bars.length === 0) return;
-  const { heights, colors } = generateHeightsAndColors(basePercent, bars.length);
-  bars.forEach((bar, idx) => {
-    bar.style.height = heights[idx] + 'px';
-    bar.style.background = colors[idx];
-  });
+if (!bars || bars.length === 0) return;
+const { heights, colors } = generateHeightsAndColors(basePercent, bars.length);
+bars.forEach((bar, idx) => {
+bar.style.height = heights[idx] + 'px';
+bar.style.background = colors[idx];
+});
 }
 function initBars(containerId, barCount = 24) {
-  const container = document.getElementById(containerId);
-  if (!container) return [];
-  container.innerHTML = '';
-  for (let i = 0; i < barCount; i++) {
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    bar.style.height = '5px';
-    container.appendChild(bar);
-  }
-  return Array.from(container.children);
+const container = document.getElementById(containerId);
+if (!container) return [];
+container.innerHTML = '';
+for (let i = 0; i < barCount; i++) {
+const bar = document.createElement('div');
+bar.className = 'bar';
+bar.style.height = '5px';
+container.appendChild(bar);
+}
+return Array.from(container.children);
 }
 const cpuBars = initBars('cpuBars', 24);
 const memBars = initBars('memBars', 24);
 const netBars = initBars('netBars', 24);
 setInterval(() => {
-  const cpuPercent = parseFloat(document.getElementById('cpuValue').innerText) || 0;
-  const memMB = parseFloat(document.getElementById('memValue').innerText) || 0;
-  const netBps = parseFloat(document.getElementById('netValue').innerText) || 0;
-  const memPercent = Math.min(100, (memMB / 500) * 100);
-  const netPercent = Math.min(100, (netBps / 1000) * 100);
-  updateBarsWithColor(cpuBars, cpuPercent);
-  updateBarsWithColor(memBars, memPercent);
-  updateBarsWithColor(netBars, netPercent);
+const cpuPercent = parseFloat(document.getElementById('cpuValue').innerText) || 0;
+const memMB = parseFloat(document.getElementById('memValue').innerText) || 0;
+const netBps = parseFloat(document.getElementById('netValue').innerText) || 0;
+const memPercent = Math.min(100, (memMB / 500) * 100);
+const netPercent = Math.min(100, (netBps / 1000) * 100);
+updateBarsWithColor(cpuBars, cpuPercent);
+updateBarsWithColor(memBars, memPercent);
+updateBarsWithColor(netBars, netPercent);
 }, 2000);
 setInterval(()=>{
-  document.getElementById('cpuValue').innerText = (Math.random()*30).toFixed(1)+'%';
-  document.getElementById('memValue').innerText = Math.floor(Math.random()*400)+' MiB';
-  document.getElementById('netValue').innerText = Math.floor(Math.random()*500)+' B/s';
+document.getElementById('cpuValue').innerText = (Math.random()*30).toFixed(1)+'%';
+document.getElementById('memValue').innerText = Math.floor(Math.random()*400)+' MiB';
+document.getElementById('netValue').innerText = Math.floor(Math.random()*500)+' B/s';
 }, 2000);
-
 let slideIdx=0,slideInt;const slider=document.getElementById('newsSlider'),track=document.querySelector('.slider-track');
 function startSlider(){clearInterval(slideInt);slideInt=setInterval(()=>{slideIdx=(slideIdx+1)%2;updateSlide();},5000);}
 function updateSlide(){if(track)track.style.transform=\`translateX(-\${slideIdx*50}%)\`;}
 function setupSlider(){if(!slider||!track)return;let isSwiping=false,startX=0,curX=0;const getX=e=>e.type.includes('mouse')?e.pageX:e.touches[0].clientX;slider.addEventListener('touchstart',e=>{startX=getX(e);isSwiping=true;clearInterval(slideInt);});slider.addEventListener('touchmove',e=>{if(!isSwiping)return;curX=getX(e);const diff=curX-startX;if(Math.abs(diff)>20)track.style.transform=\`translateX(-\${slideIdx*50+(diff/slider.offsetWidth)*50}%)\`;});slider.addEventListener('touchend',e=>{if(!isSwiping)return;isSwiping=false;const diff=curX-startX;if(Math.abs(diff)>80)diff>0?slideIdx=(slideIdx-1+2)%2:slideIdx=(slideIdx+1)%2;updateSlide();startSlider();});['mousedown','mousemove','mouseup','mouseleave'].forEach(ev=>slider.addEventListener(ev,e=>{e.preventDefault();}));}
 startSlider(); setupSlider();
-
 const panelData = [
 { type:'1gb', ram:'1GB', disk:'1GB', cpu:'40%', price:${config.PRICE_1GB || 500} },
 { type:'2gb', ram:'2GB', disk:'2GB', cpu:'60%', price:${config.PRICE_2GB || 500} },
@@ -4669,94 +4495,66 @@ const panelData = [
 let selectedPanel = null;
 function generatePriceCards(){const grid=document.getElementById('pricingGrid');let html='';panelData.forEach(panel=>{html+=\`<div class="price-card"><div class="panel-type">\${panel.type.toUpperCase()}</div><div class="panel-specs"><div><i class="fas fa-memory"></i> RAM: \${panel.ram}</div><div><i class="fas fa-hdd"></i> DISK: \${panel.disk}</div><div><i class="fas fa-microchip"></i> CPU: \${panel.cpu}</div></div><div class="price">Rp \${panel.price.toLocaleString('id-ID')}</div><button class="buy-btn" onclick="openOrderModal('\${panel.type}')"><i class="fas fa-shopping-cart"></i> BELI SEKARANG</button></div>\`;});grid.innerHTML=html;}
 function openOrderModal(panelType){
-  if(!isLoggedIn){
-    document.getElementById('loginModal').style.display='flex';
-    return;
-  }
-  const panel=panelData.find(p=>p.type===panelType);
-  if(!panel) return;
-  selectedPanel=panelType;
-  // Langsung proses pembelian tanpa konfirmasi modal
-  processPurchase(panelType);
+if(!isLoggedIn){
+document.getElementById('loginModal').style.display='flex';
+return;
 }
-async function processPurchase(panelType){
-  const qrModal = document.getElementById('qrModal');
-  const qrImageContainer = document.getElementById('qrImageContainer');
-  const qrStatus = document.getElementById('qrStatus');
-  const qrSpinner = document.getElementById('qrSpinner');
-  qrImageContainer.innerHTML = '';
-  qrStatus.innerText = '⏳ Membuat order...';
-  qrSpinner.style.display = 'block';
-  qrModal.style.display = 'flex';
-  try{
-    const response = await fetch('/api/create-order', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({panel_type:panelType}),
-      credentials: 'include'
-    });
-    const data = await response.json();
-    if(data.success){
-      currentOrderId = data.order_id;
-      // Tampilkan QR
-      const img = document.createElement('img');
-      img.src = data.qris_image_base64 || data.qris_image_url;
-      img.style.width = '250px';
-      img.style.height = '250px';
-      img.style.margin = '0 auto';
-      img.style.borderRadius = '16px';
-      img.style.border = '2px solid #5b8cff';
-      qrImageContainer.appendChild(img);
-      qrStatus.innerText = '⏳ Menunggu pembayaran...';
-      qrSpinner.style.display = 'block';
-      // Mulai polling
-      if(pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(async () => {
-        try{
-          const statusRes = await fetch('/api/order-status/' + currentOrderId);
-          const statusData = await statusRes.json();
-          if(statusData.success && (statusData.status === 'paid' || statusData.status === 'completed')){
-            clearInterval(pollInterval);
-            qrStatus.innerText = '✅ Pembayaran berhasil! Mengalihkan...';
-            qrSpinner.style.display = 'none';
-            setTimeout(() => {
-              window.location.href = '/payment-callback?order_id=' + currentOrderId;
-            }, 1500);
-          } else if(statusData.status === 'expired'){
-            clearInterval(pollInterval);
-            qrStatus.innerText = '❌ QRIS kadaluarsa. Silakan order ulang.';
-            qrSpinner.style.display = 'none';
-          }
-        } catch(err){ console.error(err); }
-      }, 3000);
-    } else {
-      qrStatus.innerText = '❌ Gagal membuat order: ' + (data.message || '');
-      qrSpinner.style.display = 'none';
-      setTimeout(() => { closeQRModal(); }, 3000);
-    }
-  } catch(err){
-    console.error(err);
-    qrStatus.innerText = '❌ Terjadi kesalahan, coba lagi.';
-    qrSpinner.style.display = 'none';
-    setTimeout(() => { closeQRModal(); }, 3000);
-  }
+const panel=panelData.find(p=>p.type===panelType);
+if(!panel) return;
+selectedPanel=panelType;
+document.getElementById('modalPackageDetails').innerHTML=\`<p><strong>📦 Paket:</strong> \${panel.type.toUpperCase()}</p><p><strong>💾 RAM:</strong> \${panel.ram}</p><p><strong>💿 Disk:</strong> \${panel.disk}</p><p><strong>⚙️ CPU:</strong> \${panel.cpu}</p><p><strong>💰 Harga:</strong> Rp \${panel.price.toLocaleString('id-ID')}</p>\`;
+document.getElementById('modalTitle').innerHTML=\`Konfirmasi Pembelian - \${panel.type.toUpperCase()}\`;
+document.getElementById('orderModal').style.display='flex';
 }
-function closeQRModal(){
-  if(pollInterval) clearInterval(pollInterval);
-  document.getElementById('qrModal').style.display = 'none';
-  currentOrderId = null;
+function closeOrderModal(){document.getElementById('orderModal').style.display='none';selectedPanel=null;}
+function closeLoginModal(){document.getElementById('loginModal').style.display='none';}
+async function submitOrder(){
+if(!isLoggedIn){
+alert('Silakan login terlebih dahulu.');
+window.location.href = '/login';
+return;
 }
-function closeLoginModal(){ document.getElementById('loginModal').style.display='none'; }
+if(!selectedPanel){
+alert('Pilih paket terlebih dahulu!');
+return;
+}
+const confirmBtn = document.querySelector('.modal-btn.confirm');
+const originalText = confirmBtn.innerText;
+confirmBtn.innerText = 'Memproses...';
+confirmBtn.disabled = true;
+try{
+const response=await fetch('/api/create-order',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({panel_type:selectedPanel}),
+credentials: 'include'
+});
+const data=await response.json();
+if(data.success){
+window.location.href=data.payment_url;
+} else {
+alert(data.message||'Gagal membuat order');
+closeOrderModal();
+}
+}catch(error){
+console.error('Error:',error);
+alert('Terjadi kesalahan, silahkan coba lagi');
+closeOrderModal();
+} finally {
+confirmBtn.innerText = originalText;
+confirmBtn.disabled = false;
+}
+}
 generatePriceCards();
 </script>
 </body>
 </html>
-    `;
-    res.send(html);
-  });
+`;
+  res.send(html);
+});
 
   // ==========================================================================
-  // 404 HANDLER (tidak berubah)
+  // 404 HANDLER
   // ==========================================================================
   app.use((req, res) => {
     res.status(404).send(`
@@ -4790,28 +4588,27 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS (masih menggunakan Pakasir? Kita ubah jadi hanya hapus)
+// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT)
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
     const orders = await getOrders();
     const now = Date.now();
-    // Untuk order Qrispy, expired berdasarkan expired_at
-    const toCancel = orders.filter(o => o.status === 'pending' && o.expired_at && new Date(o.expired_at).getTime() < now);
+    const toCancel = orders.filter(o => o.status === 'pending' && (now - new Date(o.created_at).getTime() > 120000));
     if (toCancel.length) {
       const newActive = orders.filter(o => !toCancel.some(c => c.order_id === o.order_id));
       await saveOrders(newActive);
       const cancelled = await getCancelledOrders();
-      toCancel.forEach(order => { cancelled.push({ ...order, status: 'expired', cancelled_at: new Date().toISOString() }); });
+      toCancel.forEach(order => { cancelled.push({ ...order, status: 'cancel', cancelled_at: new Date().toISOString() }); });
       await saveCancelledOrders(cancelled);
-      console.log(`✅ ${toCancel.length} order kadaluarsa otomatis dipindah ke cancelled`);
+      console.log(`✅ ${toCancel.length} order dibatalkan karena melebihi 2 menit`);
     }
   } catch (err) { console.error('Auto cancel error:', err); }
 }
 setInterval(autoCancelExpiredOrders, 30000);
 
 // ============================================================================
-// INISIALISASI GITHUB DARI URL (tidak berubah)
+// INISIALISASI GITHUB DARI URL
 // ============================================================================
 async function initGithub() {
   const tokenConfig = config.GITHUB_TOKEN;
@@ -4907,7 +4704,7 @@ async function startServer() {
 \x1b[1m\x1b[32m─────────────────────────────────────────────────────\x1b[0m
 🌐 Server: http://${HOST}:${PORT}
 📦 subdo: ${config.URL}
-?? Developer: ${config.DEVELOPER}
+👨‍💻 Developer: ${config.DEVELOPER}
 ✅ Server ready! Data tersimpan di GitHub: ${GITHUB_REPO}/${GITHUB_PATH}
 `);
     });
