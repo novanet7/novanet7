@@ -1,6 +1,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { HttpProxyAgent } = require('http-proxy-agent'); // tambahan untuk proxy HTTP
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const session = require('express-session');
@@ -902,7 +903,7 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI PROXY DINAMIS
+// FUNGSI PROXY DINAMIS (DIPERBAIKI)
 // ============================================================================
 async function loadProxyConfig() {
   try {
@@ -926,19 +927,34 @@ async function saveProxyConfig(config) {
 }
 
 function getProxyAgent() {
-  if (currentProxyConfig.enabled && currentProxyConfig.url) {
-    try {
-      return new HttpsProxyAgent(currentProxyConfig.url);
-    } catch (e) {
-      console.error('Proxy agent error:', e);
+  if (!currentProxyConfig.enabled || !currentProxyConfig.url) {
+    return null;
+  }
+  
+  const proxyUrl = currentProxyConfig.url.trim();
+  
+  // Validasi URL
+  try {
+    const parsed = new URL(proxyUrl);
+    if (!parsed.protocol || !(parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
+      console.error('❌ Proxy URL harus menggunakan http:// atau https://');
       return null;
     }
+    
+    // Pilih agent sesuai protokol
+    if (parsed.protocol === 'https:') {
+      return new HttpsProxyAgent(proxyUrl);
+    } else {
+      return new HttpProxyAgent(proxyUrl);
+    }
+  } catch (err) {
+    console.error('❌ Proxy URL tidak valid:', err.message);
+    return null;
   }
-  return null;
 }
 
 // ============================================================================
-// FUNGSI MUSTIKA PAYMENT (dengan proxy dinamis)
+// FUNGSI MUSTIKA PAYMENT (dengan proxy dinamis + logging)
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   const apiUrl = 'https://mustikapayment.com/api/createpay';
@@ -955,9 +971,16 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
       'X-Api-Key': MUSTIKA_API_KEY,
       'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: params.toString()
+    body: params.toString(),
+    timeout: 30000 // 30 detik timeout
   };
-  if (agent) fetchOptions.agent = agent;
+  
+  if (agent) {
+    fetchOptions.agent = agent;
+    console.log(`🌐 Menggunakan proxy: ${currentProxyConfig.url}`);
+  } else {
+    console.log(`🌐 Proxy tidak aktif, menggunakan direct connection`);
+  }
 
   try {
     const response = await fetch(apiUrl, fetchOptions);
@@ -987,6 +1010,30 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
     }
   } catch (error) {
     console.error('Create Mustika Payment error:', error);
+    
+    // Jika proxy gagal, coba tanpa proxy (fallback) - opsional
+    if (agent && !currentProxyConfig.fallback_disabled) {
+      console.warn('⚠️ Proxy gagal, mencoba direct connection...');
+      try {
+        const fallbackOptions = { ...fetchOptions };
+        delete fallbackOptions.agent;
+        const response = await fetch(apiUrl, fallbackOptions);
+        const rawText = await response.text();
+        const data = JSON.parse(rawText);
+        if (data.status === 'success' && data.payment_link) {
+          console.log('✅ Direct connection berhasil setelah proxy gagal');
+          return {
+            success: true,
+            payment_link: data.payment_link,
+            ref_no: data.ref_no,
+            amount: data.amount
+          };
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback juga gagal:', fallbackErr.message);
+      }
+    }
+    
     return { success: false, error: error.message };
   }
 }
@@ -1720,11 +1767,60 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
         enabled: enabled === true || enabled === 'true',
         url: url || ''
       };
+      // Validasi URL jika enabled
+      if (newConfig.enabled && newConfig.url) {
+        try {
+          new URL(newConfig.url);
+        } catch (err) {
+          return res.status(400).json({ success: false, error: 'URL proxy tidak valid: ' + err.message });
+        }
+      }
       await saveProxyConfig(newConfig);
       res.json({ success: true, config: newConfig });
     } catch (error) {
       console.error('Update proxy config error:', error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // ==========================================================================
+  // API TEST PROXY (ADMIN)
+  // ==========================================================================
+  app.post('/api/admin/test-proxy', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { url, enabled } = req.body;
+      const testUrl = 'https://api.ipify.org?format=json';
+      
+      let agent = null;
+      if (enabled && url) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol === 'https:') {
+            agent = new HttpsProxyAgent(url);
+          } else {
+            agent = new HttpProxyAgent(url);
+          }
+        } catch (err) {
+          return res.json({ success: false, message: 'URL proxy tidak valid: ' + err.message });
+        }
+      }
+      
+      const fetchOptions = { method: 'GET', timeout: 10000 };
+      if (agent) fetchOptions.agent = agent;
+      
+      const start = Date.now();
+      const response = await fetch(testUrl, fetchOptions);
+      const data = await response.json();
+      const latency = Date.now() - start;
+      
+      res.json({
+        success: true,
+        ip: data.ip,
+        latency: latency + 'ms',
+        message: agent ? `Proxy aktif, IP keluar: ${data.ip}` : 'Direct connection, IP server asli'
+      });
+    } catch (error) {
+      res.json({ success: false, message: 'Gagal koneksi: ' + error.message });
     }
   });
 
@@ -2989,7 +3085,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD (dengan form proxy)
+  // ADMIN DASHBOARD (dengan form proxy + IP server di paling bawah)
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3023,6 +3119,16 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
       });
     }
     userData.sort((a, b) => new Date(b.joined) - new Date(a.joined));
+    
+    // Ambil IP publik server via ipify (untuk ditampilkan di admin)
+    let serverPublicIp = 'Tidak diketahui';
+    try {
+      const ipRes = await fetch('https://api.ipify.org?format=json');
+      const ipData = await ipRes.json();
+      serverPublicIp = ipData.ip;
+    } catch (e) { console.error('Gagal ambil IP publik:', e); }
+    const clientIp = req.ip || req.connection.remoteAddress;
+    
     const html = `
 <!DOCTYPE html>
 <html lang="id">
@@ -3415,6 +3521,28 @@ border-top: 1px solid #2a3a60;
 color: #8a9bb0;
 font-size: 0.7rem;
 }
+.server-ip-box {
+margin-top: 20px;
+background: rgba(0, 0, 0, 0.4);
+border-radius: 16px;
+padding: 15px;
+text-align: center;
+border-left: 3px solid #ffcc00;
+}
+.server-ip-box .label {
+font-size: 0.8rem;
+color: #ffcc00;
+text-transform: uppercase;
+letter-spacing: 1px;
+}
+.server-ip-box .ip {
+font-family: 'Orbitron';
+font-size: 1.2rem;
+font-weight: bold;
+color: #fff;
+margin-top: 5px;
+word-break: break-all;
+}
 @media (max-width: 768px) {
 .top-bar {
 flex-direction: column;
@@ -3480,10 +3608,11 @@ font-size: 0.8rem;
           <input type="checkbox" id="proxyEnabled"> <span>Aktifkan Proxy</span>
         </label>
         <div style="flex: 1; min-width: 250px;">
-          <label>Proxy URL (HTTPS):</label>
-          <input type="text" id="proxyUrl" placeholder="https://user:pass@host:port" style="width: 100%; padding: 8px; border-radius: 20px; background: #1a1f30; border: 1px solid #2a3a60; color: #fff;">
+          <label>Proxy URL (http:// atau https://):</label>
+          <input type="text" id="proxyUrl" placeholder="http://user:pass@host:port atau https://host:port" style="width: 100%; padding: 8px; border-radius: 20px; background: #1a1f30; border: 1px solid #2a3a60; color: #fff;">
         </div>
         <button id="saveProxyBtn" class="action-btn approve-btn" style="background: #2196f3;">Simpan</button>
+        <button id="testProxyBtn" class="action-btn" style="background: #9c27b0;">Test Proxy</button>
       </div>
       <div style="margin-top: 15px; font-size: 12px; color: #aaa;">
         <i class="fas fa-info-circle"></i> Proxy akan digunakan untuk semua request ke Mustika Payment API.
@@ -3538,7 +3667,7 @@ ${refundRequests.map(r => `
 <td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
 </tr>
 `).join('')}
-${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
+${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td>' : ''}
 </tbody>
 </table>
 </div>
@@ -3565,7 +3694,7 @@ ${userData.map(u => `
 <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
 </tr>
 `).join('')}
-${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
+${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td>' : ''}
 </tbody>
 </table>
 </div>
@@ -3598,10 +3727,18 @@ return `
 </tr>
 `;
 }).join('')}
-${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
+${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td>' : ''}
 </tbody>
 </table>
 </div>
+
+<!-- Server IP Information (paling bawah) -->
+<div class="server-ip-box">
+  <div class="label"><i class="fas fa-globe"></i> SERVER IP INFORMATION</div>
+  <div class="ip">🌐 Public IP: ${serverPublicIp}</div>
+  <div class="ip">🖥️ Local IP (req): ${clientIp}</div>
+</div>
+
 <div class="footer">
 <p>© 2026 ${SITE_NAME} Admin Panel • ${config.DEVELOPER} • v${config.VERSI_WEB}</p>
 </div>
@@ -3798,6 +3935,33 @@ updateProxyStatusBadge();
 alert('Konfigurasi proxy berhasil disimpan');
 } else {
 alert('Gagal: ' + data.error);
+}
+} catch (err) {
+alert('Error: ' + err.message);
+} finally {
+btn.innerText = originalText;
+btn.disabled = false;
+}
+});
+// Test Proxy
+document.getElementById('testProxyBtn')?.addEventListener('click', async () => {
+const enabled = document.getElementById('proxyEnabled').checked;
+const url = document.getElementById('proxyUrl').value.trim();
+const btn = document.getElementById('testProxyBtn');
+const originalText = btn.innerText;
+btn.innerText = '⏳ Testing...';
+btn.disabled = true;
+try {
+const res = await fetch('/api/admin/test-proxy', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ enabled, url })
+});
+const data = await res.json();
+if (data.success) {
+alert(`✅ Proxy berhasil!\nIP keluar: ${data.ip}\nLatency: ${data.latency}\n${data.message}`);
+} else {
+alert(`❌ Proxy gagal: ${data.message}`);
 }
 } catch (err) {
 alert('Error: ' + err.message);
