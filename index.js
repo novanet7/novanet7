@@ -1,7 +1,6 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const { HttpProxyAgent } = require('http-proxy-agent'); // tambahan untuk proxy HTTP
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const session = require('express-session');
@@ -24,16 +23,14 @@ const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
-
-// Konfigurasi Mustika Payment
 const MUSTIKA_API_KEY = config.MUSTIKA_API_KEY;
 if (!MUSTIKA_API_KEY) {
   console.error('❌ MUSTIKA_API_KEY tidak ditemukan di setting.js');
   process.exit(1);
 }
 const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
-
-// Variabel global untuk proxy dan GitHub
+const PROXY_URL = 'https://noble:fp_5dce2cbd8898b723@p-8b9327a0.noble-ip.com:3129';
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -41,10 +38,6 @@ let GITHUB_PATH = 'data';
 let octokit = null;
 let owner, repo;
 const sessionCache = new Map();
-
-// Konfigurasi proxy (akan disimpan di GitHub)
-let currentProxyConfig = { enabled: false, url: '' };
-const PROXY_CONFIG_PATH = `${GITHUB_PATH}/proxy_config.json`.replace(/\/+/g, '/');
 
 // ============================================================================
 // KELAS GITHUB SESSION STORE
@@ -903,58 +896,7 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI PROXY DINAMIS (DIPERBAIKI)
-// ============================================================================
-async function loadProxyConfig() {
-  try {
-    const { content } = await readGitHubFile(PROXY_CONFIG_PATH);
-    if (content) {
-      currentProxyConfig = content;
-    } else {
-      currentProxyConfig = { enabled: false, url: '' };
-      await saveProxyConfig(currentProxyConfig);
-    }
-  } catch (err) {
-    console.error('Gagal load proxy config:', err);
-    currentProxyConfig = { enabled: false, url: '' };
-  }
-  return currentProxyConfig;
-}
-
-async function saveProxyConfig(config) {
-  await writeGitHubFileWithRetry(PROXY_CONFIG_PATH, config);
-  currentProxyConfig = config;
-}
-
-function getProxyAgent() {
-  if (!currentProxyConfig.enabled || !currentProxyConfig.url) {
-    return null;
-  }
-  
-  const proxyUrl = currentProxyConfig.url.trim();
-  
-  // Validasi URL
-  try {
-    const parsed = new URL(proxyUrl);
-    if (!parsed.protocol || !(parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
-      console.error('❌ Proxy URL harus menggunakan http:// atau https://');
-      return null;
-    }
-    
-    // Pilih agent sesuai protokol
-    if (parsed.protocol === 'https:') {
-      return new HttpsProxyAgent(proxyUrl);
-    } else {
-      return new HttpProxyAgent(proxyUrl);
-    }
-  } catch (err) {
-    console.error('❌ Proxy URL tidak valid:', err.message);
-    return null;
-  }
-}
-
-// ============================================================================
-// FUNGSI MUSTIKA PAYMENT (dengan proxy dinamis + logging)
+// FUNGSI MUSTIKA PAYMENT
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   const apiUrl = 'https://mustikapayment.com/api/createpay';
@@ -964,33 +906,29 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
   params.append('customer_name', customer_name);
   params.append('product_name', product_name);
 
-  const agent = getProxyAgent();
-  const fetchOptions = {
-    method: 'POST',
-    headers: {
-      'X-Api-Key': MUSTIKA_API_KEY,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: params.toString(),
-    timeout: 30000 // 30 detik timeout
-  };
-  
-  if (agent) {
-    fetchOptions.agent = agent;
-    console.log(`🌐 Menggunakan proxy: ${currentProxyConfig.url}`);
-  } else {
-    console.log(`🌐 Proxy tidak aktif, menggunakan direct connection`);
-  }
-
   try {
-    const response = await fetch(apiUrl, fetchOptions);
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-Api-Key': MUSTIKA_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString(),
+      agent: proxyAgent   // pastikan proxyAgent sudah didefinisikan
+    });
+
+    // Cek status HTTP
     if (!response.ok) {
       const text = await response.text();
       console.error('HTTP Error:', response.status, text);
       throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
     }
+
+    // Baca response sebagai text dulu untuk debugging
     const rawText = await response.text();
     console.log('Raw response:', rawText);
+
+    // Coba parse JSON
     let data;
     try {
       data = JSON.parse(rawText);
@@ -998,6 +936,7 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
       console.error('Gagal parse JSON:', rawText);
       throw new Error('Respons dari Mustika bukan JSON: ' + rawText.substring(0, 100));
     }
+
     if (data.status === 'success' && data.payment_link) {
       return {
         success: true,
@@ -1010,30 +949,6 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
     }
   } catch (error) {
     console.error('Create Mustika Payment error:', error);
-    
-    // Jika proxy gagal, coba tanpa proxy (fallback) - opsional
-    if (agent && !currentProxyConfig.fallback_disabled) {
-      console.warn('⚠️ Proxy gagal, mencoba direct connection...');
-      try {
-        const fallbackOptions = { ...fetchOptions };
-        delete fallbackOptions.agent;
-        const response = await fetch(apiUrl, fallbackOptions);
-        const rawText = await response.text();
-        const data = JSON.parse(rawText);
-        if (data.status === 'success' && data.payment_link) {
-          console.log('✅ Direct connection berhasil setelah proxy gagal');
-          return {
-            success: true,
-            payment_link: data.payment_link,
-            ref_no: data.ref_no,
-            amount: data.amount
-          };
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback juga gagal:', fallbackErr.message);
-      }
-    }
-    
     return { success: false, error: error.message };
   }
 }
@@ -1148,7 +1063,7 @@ Crawl-delay: 1
         status: 'pending',
         created_at: new Date().toISOString(),
         panel_created: false,
-        ref_no: mustikaRes.ref_no
+        ref_no: mustikaRes.ref_no  // simpan ref_no dari Mustika
       };
       await addOrder(order);
       
@@ -1160,7 +1075,8 @@ Crawl-delay: 1
     }
   });
 
-  // Endpoint check-payment tidak digunakan lagi
+  // Endpoint check-payment tidak lagi digunakan karena kita mengandalkan callback.
+  // Namun tetap ada untuk kompatibilitas (selalu mengembalikan status pending)
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
     res.json({ success: true, status: 'pending', message: 'Gunakan callback untuk konfirmasi pembayaran' });
   });
@@ -1207,13 +1123,16 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // PAYMENT CALLBACK (POST & GET)
+  // PAYMENT CALLBACK (MENERIMA POST & GET)
   // ==========================================================================
   app.post('/payment-callback', async (req, res) => {
+    // Proses callback dari Mustika (biasanya POST)
+    // Data yang dikirim tidak diketahui, asumsikan ada ref_no
     const { ref_no, status, order_id } = req.body;
     if (!ref_no && !order_id) {
       return res.status(400).send('Missing ref_no or order_id');
     }
+    // Cari order berdasarkan ref_no
     let order = null;
     if (ref_no) {
       const orders = await getOrders();
@@ -1224,12 +1143,15 @@ Crawl-delay: 1
     if (!order) {
       return res.status(404).send('Order tidak ditemukan');
     }
+    // Jika sudah diproses, langsung sukses
     if (order.panel_created) {
       return res.redirect(`/profile?order=${order.order_id}`);
     }
+    // Proses pembuatan panel
     await processSuccessfulPayment(order, res);
   });
 
+  // Endpoint GET untuk kompatibilitas (jika Mustika redirect dengan GET)
   app.get('/payment-callback', async (req, res) => {
     const { ref_no, order_id, status } = req.query;
     if (!ref_no && !order_id) {
@@ -1251,10 +1173,13 @@ Crawl-delay: 1
     await processSuccessfulPayment(order, res);
   });
 
+  // Fungsi bersama untuk memproses pembayaran sukses
   async function processSuccessfulPayment(order, res) {
     try {
+      // Update status order menjadi paid
       await updateOrder(order.order_id, { status: 'paid' });
       
+      // Buat panel
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
       const user = await findUserByEmail(order.email);
@@ -1290,7 +1215,7 @@ Crawl-delay: 1
         });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
-      // Kirim notifikasi Telegram
+      // Kirim notifikasi Telegram ke owner
       const now = new Date();
       const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
       const dayName = formatterDay.format(now);
@@ -1321,6 +1246,7 @@ Crawl-delay: 1
         });
       } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       
+      // Tampilkan halaman sukses
       const updatedOrder = await findOrderById(order.order_id);
       const panel = updatedOrder.panel_data;
       const userCred = updatedOrder.user_data;
@@ -1638,7 +1564,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   }
 
   // ==========================================================================
-  // API REFUND ORDER
+  // API REFUND ORDER (DIUBAH)
   // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
@@ -1647,6 +1573,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       
+      // Untuk pending: hapus order dari database (tanpa API eksternal)
       if (order.status === 'pending') {
         const activeOrders = await getOrders();
         const newActive = activeOrders.filter(o => o.order_id !== order_id);
@@ -1657,6 +1584,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
         return res.json({ success: true, message: 'Order berhasil dibatalkan' });
       }
       
+      // Untuk paid: buat refund request (admin harus proses manual di Mustika)
       if (order.status === 'paid' || order.status === 'completed') {
         const isAdminUser = req.user.email === config.ADMIN_EMAIL;
         const paymentTime = new Date(order.created_at).getTime();
@@ -1678,7 +1606,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API APPROVE REFUND (ADMIN)
+  // API APPROVE REFUND (ADMIN) - SAMA SEPERTI SEBELUMNYA
   // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1717,7 +1645,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API CANCEL ORDER (ADMIN)
+  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
   // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1746,82 +1674,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   // ==========================================================================
   app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: config.VERSI_WEB, developer: config.DEVELOPER, uptime: process.uptime(), timestamp: Date.now() });
-  });
-
-  // ==========================================================================
-  // API KONFIGURASI PROXY (ADMIN)
-  // ==========================================================================
-  app.get('/api/admin/proxy-config', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      await loadProxyConfig();
-      res.json({ success: true, config: currentProxyConfig });
-    } catch (error) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  app.post('/api/admin/proxy-config', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { enabled, url } = req.body;
-      const newConfig = {
-        enabled: enabled === true || enabled === 'true',
-        url: url || ''
-      };
-      // Validasi URL jika enabled
-      if (newConfig.enabled && newConfig.url) {
-        try {
-          new URL(newConfig.url);
-        } catch (err) {
-          return res.status(400).json({ success: false, error: 'URL proxy tidak valid: ' + err.message });
-        }
-      }
-      await saveProxyConfig(newConfig);
-      res.json({ success: true, config: newConfig });
-    } catch (error) {
-      console.error('Update proxy config error:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  // ==========================================================================
-  // API TEST PROXY (ADMIN)
-  // ==========================================================================
-  app.post('/api/admin/test-proxy', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { url, enabled } = req.body;
-      const testUrl = 'https://api.ipify.org?format=json';
-      
-      let agent = null;
-      if (enabled && url) {
-        try {
-          const parsed = new URL(url);
-          if (parsed.protocol === 'https:') {
-            agent = new HttpsProxyAgent(url);
-          } else {
-            agent = new HttpProxyAgent(url);
-          }
-        } catch (err) {
-          return res.json({ success: false, message: 'URL proxy tidak valid: ' + err.message });
-        }
-      }
-      
-      const fetchOptions = { method: 'GET', timeout: 10000 };
-      if (agent) fetchOptions.agent = agent;
-      
-      const start = Date.now();
-      const response = await fetch(testUrl, fetchOptions);
-      const data = await response.json();
-      const latency = Date.now() - start;
-      
-      res.json({
-        success: true,
-        ip: data.ip,
-        latency: latency + 'ms',
-        message: agent ? `Proxy aktif, IP keluar: ${data.ip}` : 'Direct connection, IP server asli'
-      });
-    } catch (error) {
-      res.json({ success: false, message: 'Gagal koneksi: ' + error.message });
-    }
   });
 
   // ==========================================================================
@@ -1856,12 +1708,12 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // ROUTE LOGIN
-  // ==========================================================================
-  app.get('/login', (req, res) => {
-    if (req.isAuthenticated()) return res.redirect('/profile');
-    const error = req.flash('error')[0];
-    const html = `
+// ROUTE LOGIN (GET & POST) – LOGO DIPERBESAR, BLUR LEBIH TIPIS
+// ==========================================================================
+app.get('/login', (req, res) => {
+  if (req.isAuthenticated()) return res.redirect('/profile');
+  const error = req.flash('error')[0];
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1958,8 +1810,8 @@ errorDiv.style.display = 'block';
 </body>
 </html>
 `;
-    res.send(html);
-  });
+  res.send(html);
+});
 
   app.post('/login', (req, res, next) => {
     passport.authenticate('local', (err, user, info) => {
@@ -1983,14 +1835,14 @@ errorDiv.style.display = 'block';
     })(req, res, next);
   });
 
-  // ==========================================================================
-  // ROUTE REGISTER
-  // ==========================================================================
-  app.get('/register', (req, res) => {
-    if (req.isAuthenticated()) return res.redirect('/profile');
-    const error = req.flash('error')[0];
-    const rateLimitMessage = req.flash('rateLimit')[0];
-    const html = `
+// ==========================================================================
+// ROUTE REGISTER (GET) – DENGAN LOGO 200px & BLUR 8px
+// ==========================================================================
+app.get('/register', (req, res) => {
+  if (req.isAuthenticated()) return res.redirect('/profile');
+  const error = req.flash('error')[0];
+  const rateLimitMessage = req.flash('rateLimit')[0];
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -2010,7 +1862,7 @@ errorDiv.style.display = 'block';
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0}
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
 .back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(8px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
@@ -2148,21 +2000,25 @@ errorDiv.style.display = 'block';
 </script>
 </body>
 </html>
-`;
-    res.send(html);
-  });
+  `;
+  res.send(html);
+});
 
+  // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
+
     if (await isRegisterBlocked(clientIp)) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
+
     const attempt = await registerAttempt(clientIp);
     if (attempt.blocked) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
+
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       req.flash('error', 'Semua field harus diisi');
@@ -2183,10 +2039,14 @@ errorDiv.style.display = 'block';
         return res.redirect('/register');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
+      // Proses createUser (termasuk upload foto) - sudah menunggu selesai
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
+      
+      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
       console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
+      
       req.flash('success', 'Registrasi berhasil, silakan login');
       res.redirect('/login');
     } catch (err) {
@@ -2201,7 +2061,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // GOOGLE OAUTH
+  // GOOGLE OAUTH ROUTES
   // ==========================================================================
   app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
   app.get('/auth/google/callback',
@@ -2212,7 +2072,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST)
+  // ROUTE PROFILE (GET & POST) - LENGKAP
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -3085,7 +2945,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD (dengan form proxy + IP server di paling bawah)
+  // ADMIN DASHBOARD
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3119,17 +2979,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
       });
     }
     userData.sort((a, b) => new Date(b.joined) - new Date(a.joined));
-    
-    // Ambil IP publik server via ipify (untuk ditampilkan di admin)
-    let serverPublicIp = 'Tidak diketahui';
-    try {
-      const ipRes = await fetch('https://api.ipify.org?format=json');
-      const ipData = await ipRes.json();
-      serverPublicIp = ipData.ip;
-    } catch (e) { console.error('Gagal ambil IP publik:', e); }
-    const clientIp = req.ip || req.connection.remoteAddress;
-    
-const html = `
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -3140,1066 +2990,697 @@ const html = `
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+margin: 0;
+padding: 0;
+box-sizing: border-box;
 }
 body {
-  font-family: 'Rajdhani', sans-serif;
-  background: radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
-  color: #fff;
-  min-height: 100vh;
-  padding: 20px;
-  position: relative;
-  overflow-x: hidden;
+font-family: 'Rajdhani', sans-serif;
+background: radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+color: #fff;
+min-height: 100vh;
+padding: 20px;
+position: relative;
+overflow-x: hidden;
 }
 body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
-  background-size: cover;
-  opacity: 0.2;
-  z-index: -2;
-  pointer-events: none;
+content: '';
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
+background-size: cover;
+opacity: 0.2;
+z-index: -2;
+pointer-events: none;
 }
 body::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.65);
-  z-index: -1;
-  pointer-events: none;
+content: '';
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: rgba(0, 0, 0, 0.65);
+z-index: -1;
+pointer-events: none;
 }
 .dashboard-container {
-  max-width: 1600px;
-  margin: 0 auto;
-  position: relative;
-  z-index: 1;
+max-width: 1600px;
+margin: 0 auto;
+position: relative;
+z-index: 1;
 }
 .top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(15, 25, 45, 0.6);
-  backdrop-filter: blur(12px);
-  border-radius: 30px;
-  padding: 10px 25px;
-  margin-bottom: 30px;
-  border: 1px solid rgba(91, 140, 255, 0.3);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+display: flex;
+justify-content: space-between;
+align-items: center;
+background: rgba(15, 25, 45, 0.6);
+backdrop-filter: blur(12px);
+border-radius: 30px;
+padding: 10px 25px;
+margin-bottom: 30px;
+border: 1px solid rgba(91, 140, 255, 0.3);
+box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 .logo-area h1 {
-  font-family: 'Orbitron';
-  font-size: 1.6rem;
-  background: linear-gradient(135deg, #5b8cff, #9b4dff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  letter-spacing: 1px;
+font-family: 'Orbitron';
+font-size: 1.6rem;
+background: linear-gradient(135deg, #5b8cff, #9b4dff);
+-webkit-background-clip: text;
+background-clip: text;
+color: transparent;
+letter-spacing: 1px;
 }
 .logo-area h1 i {
-  margin-right: 8px;
-  background: none;
-  color: #5b8cff;
-  -webkit-background-clip: unset;
-  background-clip: unset;
+margin-right: 8px;
+background: none;
+color: #5b8cff;
+-webkit-background-clip: unset;
+background-clip: unset;
 }
 .admin-profile {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 5px 15px 5px 10px;
-  border-radius: 50px;
-  border-left: 2px solid #5b8cff;
+display: flex;
+align-items: center;
+gap: 15px;
+background: rgba(0, 0, 0, 0.4);
+padding: 5px 15px 5px 10px;
+border-radius: 50px;
+border-left: 2px solid #5b8cff;
 }
 .admin-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  border: 2px solid #5b8cff;
-  object-fit: cover;
-  background: #1a1f30;
+width: 42px;
+height: 42px;
+border-radius: 50%;
+border: 2px solid #5b8cff;
+object-fit: cover;
+background: #1a1f30;
 }
 .admin-info {
-  text-align: right;
+text-align: right;
 }
 .admin-name {
-  font-weight: bold;
-  font-size: 1rem;
-  color: #fff;
+font-weight: bold;
+font-size: 1rem;
+color: #fff;
 }
 .admin-role {
-  font-size: 0.75rem;
-  color: #8a9bb0;
-  letter-spacing: 0.5px;
+font-size: 0.75rem;
+color: #8a9bb0;
+letter-spacing: 0.5px;
 }
 .back-link {
-  color: #8a9bb0;
-  text-decoration: none;
-  transition: 0.2s;
-  margin-left: 15px;
+color: #8a9bb0;
+text-decoration: none;
+transition: 0.2s;
+margin-left: 15px;
 }
 .back-link:hover {
-  color: #5b8cff;
+color: #5b8cff;
 }
-
-.section-shell {
-  margin-bottom: 35px;
-}
-
 .stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-  margin-bottom: 35px;
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+gap: 20px;
+margin-bottom: 40px;
 }
 .stat-card {
-  background: rgba(15, 25, 45, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(91, 140, 255, 0.3);
-  border-radius: 24px;
-  padding: 20px;
-  text-align: center;
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
+background: rgba(15, 25, 45, 0.6);
+backdrop-filter: blur(8px);
+border: 1px solid rgba(91, 140, 255, 0.3);
+border-radius: 24px;
+padding: 20px;
+text-align: center;
+transition: all 0.3s ease;
+position: relative;
+overflow: hidden;
 }
 .stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.2), transparent);
-  transition: left 0.5s;
+content: '';
+position: absolute;
+top: 0;
+left: -100%;
+width: 100%;
+height: 100%;
+background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.2), transparent);
+transition: left 0.5s;
 }
 .stat-card:hover {
-  transform: translateY(-5px);
-  border-color: #5b8cff;
-  box-shadow: 0 10px 25px rgba(91, 140, 255, 0.2);
+transform: translateY(-5px);
+border-color: #5b8cff;
+box-shadow: 0 10px 25px rgba(91, 140, 255, 0.2);
 }
 .stat-card:hover::before {
-  left: 100%;
+left: 100%;
 }
 .stat-card h3 {
-  font-size: 0.9rem;
-  color: #8a9bb0;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 12px;
+font-size: 0.9rem;
+color: #8a9bb0;
+text-transform: uppercase;
+letter-spacing: 1px;
+margin-bottom: 12px;
 }
 .stat-card .number {
-  font-size: 2.2rem;
-  font-weight: bold;
-  font-family: 'Orbitron';
-  color: #ffcc00;
-  text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
-  word-break: break-word;
+font-size: 2.5rem;
+font-weight: bold;
+font-family: 'Orbitron';
+color: #ffcc00;
+text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
 }
-
-.server-status-section,
-.settings-section,
-.panel-box {
-  background: rgba(15, 25, 45, 0.6);
-  backdrop-filter: blur(8px);
-  border-radius: 24px;
-  padding: 22px;
-  border: 1px solid rgba(91, 140, 255, 0.3);
+.server-status-section {
+background: rgba(15, 25, 45, 0.6);
+backdrop-filter: blur(8px);
+border-radius: 24px;
+padding: 20px;
+margin-bottom: 40px;
+border: 1px solid rgba(91, 140, 255, 0.3);
 }
-
 .section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 20px;
-  border-bottom: 1px solid rgba(91, 140, 255, 0.3);
-  padding-bottom: 10px;
-  gap: 15px;
-  flex-wrap: wrap;
+display: flex;
+justify-content: space-between;
+align-items: baseline;
+margin-bottom: 20px;
+border-bottom: 1px solid rgba(91, 140, 255, 0.3);
+padding-bottom: 10px;
 }
 .section-header h2 {
-  font-family: 'Orbitron';
-  font-size: 1.4rem;
-  color: #5b8cff;
-  letter-spacing: 1px;
+font-family: 'Orbitron';
+font-size: 1.4rem;
+color: #5b8cff;
+letter-spacing: 1px;
 }
 .section-header h2 i {
-  margin-right: 8px;
+margin-right: 8px;
 }
 .last-update {
-  font-size: 0.7rem;
-  color: #8a9bb0;
+font-size: 0.7rem;
+color: #8a9bb0;
 }
-
 .status-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+gap: 20px;
+margin-bottom: 20px;
 }
 .metric-card {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 20px;
-  padding: 15px;
-  border-left: 3px solid #5b8cff;
+background: rgba(0, 0, 0, 0.4);
+border-radius: 20px;
+padding: 15px;
+border-left: 3px solid #5b8cff;
 }
 .metric-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  font-size: 0.9rem;
-  color: #bbb;
-  gap: 10px;
+display: flex;
+justify-content: space-between;
+margin-bottom: 12px;
+font-size: 0.9rem;
+color: #bbb;
 }
 .bar-container {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 70px;
-  margin: 10px 0;
-  padding: 5px;
+display: flex;
+align-items: flex-end;
+gap: 6px;
+height: 70px;
+margin: 10px 0;
+padding: 5px;
 }
 .bar {
-  flex: 1;
-  background: linear-gradient(to top, #5b8cff, #9b4dff);
-  border-radius: 4px 4px 0 0;
-  transition: height 0.3s ease;
+flex: 1;
+background: linear-gradient(to top, #5b8cff, #9b4dff);
+border-radius: 4px 4px 0 0;
+transition: height 0.3s ease;
 }
 .metric-value {
-  text-align: right;
-  font-family: monospace;
-  font-size: 0.9rem;
-  color: #ffcc00;
+text-align: right;
+font-family: monospace;
+font-size: 0.9rem;
+color: #ffcc00;
 }
 .info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-  margin-top: 15px;
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+gap: 15px;
+margin-top: 15px;
 }
 .info-item {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px;
-  padding: 12px;
-  text-align: center;
+background: rgba(0, 0, 0, 0.3);
+border-radius: 12px;
+padding: 12px;
+text-align: center;
 }
 .info-item .label {
-  font-size: 0.7rem;
-  color: #8a9bb0;
-  text-transform: uppercase;
-  margin-bottom: 5px;
+font-size: 0.7rem;
+color: #8a9bb0;
+text-transform: uppercase;
+margin-bottom: 5px;
 }
 .info-item .value {
-  font-family: 'Orbitron';
-  font-size: 1.05rem;
-  font-weight: bold;
-  color: #fff;
-  word-break: break-word;
+font-family: 'Orbitron';
+font-size: 1.1rem;
+font-weight: bold;
+color: #fff;
 }
-
 .section-title {
-  font-family: 'Orbitron';
-  font-size: 1.4rem;
-  color: #5b8cff;
-  margin: 30px 0 15px;
-  border-left: 4px solid #5b8cff;
-  padding-left: 15px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+font-family: 'Orbitron';
+font-size: 1.4rem;
+color: #5b8cff;
+margin: 30px 0 15px;
+border-left: 4px solid #5b8cff;
+padding-left: 15px;
+display: flex;
+justify-content: space-between;
+align-items: center;
+flex-wrap: wrap;
+gap: 10px;
 }
 .search-box {
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid #2a3a60;
-  border-radius: 30px;
-  padding: 5px 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+background: rgba(0, 0, 0, 0.5);
+border: 1px solid #2a3a60;
+border-radius: 30px;
+padding: 5px 15px;
+display: flex;
+align-items: center;
+gap: 8px;
 }
 .search-box i {
-  color: #8a9bb0;
+color: #8a9bb0;
 }
 .search-box input {
-  background: transparent;
-  border: none;
-  color: #fff;
-  padding: 6px 0;
-  font-size: 0.9rem;
-  outline: none;
-  width: 180px;
+background: transparent;
+border: none;
+color: #fff;
+padding: 6px 0;
+font-size: 0.9rem;
+outline: none;
+width: 180px;
 }
-
 .table-wrapper {
-  overflow-x: auto;
-  background: rgba(15, 25, 45, 0.6);
-  backdrop-filter: blur(8px);
-  border-radius: 20px;
-  border: 1px solid rgba(91, 140, 255, 0.3);
-  margin-bottom: 30px;
+overflow-x: auto;
+background: rgba(15, 25, 45, 0.6);
+backdrop-filter: blur(8px);
+border-radius: 20px;
+border: 1px solid rgba(91, 140, 255, 0.3);
+margin-bottom: 30px;
 }
 .table-wrapper.scrollable-table {
-  max-height: 500px;
-  overflow-y: auto;
+max-height: 500px;
+overflow-y: auto;
 }
 table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
+width: 100%;
+border-collapse: collapse;
+font-size: 0.9rem;
 }
 th, td {
-  padding: 12px 15px;
-  text-align: left;
-  border-bottom: 1px solid rgba(91, 140, 255, 0.2);
+padding: 12px 15px;
+text-align: left;
+border-bottom: 1px solid rgba(91, 140, 255, 0.2);
 }
 th {
-  color: #5b8cff;
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.3);
-  position: sticky;
-  top: 0;
-  backdrop-filter: blur(4px);
+color: #5b8cff;
+font-weight: 600;
+background: rgba(0, 0, 0, 0.3);
+position: sticky;
+top: 0;
+backdrop-filter: blur(4px);
 }
 tr:hover {
-  background: rgba(91, 140, 255, 0.1);
+background: rgba(91, 140, 255, 0.1);
 }
 .status-paid { color: #4caf50; font-weight: bold; }
 .status-pending { color: #ff9800; font-weight: bold; }
 .status-cancel, .status-refunded { color: #f44336; font-weight: bold; }
-
 .user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  vertical-align: middle;
-  margin-right: 8px;
-  border: 1px solid #5b8cff;
+width: 36px;
+height: 36px;
+border-radius: 50%;
+object-fit: cover;
+vertical-align: middle;
+margin-right: 8px;
+border: 1px solid #5b8cff;
 }
 .user-bio {
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #aaa;
-  font-size: 0.8rem;
+max-width: 180px;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+color: #aaa;
+font-size: 0.8rem;
 }
-.email-cell {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.refund-request {
-  background: rgba(33, 150, 243, 0.15);
-}
-
 .action-btn {
-  background: #f44336;
-  color: #fff;
-  border: none;
-  padding: 7px 14px;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.78rem;
-  transition: 0.2s;
+background: #f44336;
+color: #fff;
+border: none;
+padding: 5px 12px;
+border-radius: 20px;
+cursor: pointer;
+font-size: 0.75rem;
+transition: 0.2s;
 }
 .action-btn:hover {
-  transform: scale(1.02);
+background: #d32f2f;
+transform: scale(1.02);
 }
 .action-btn.refund-btn {
-  background: #4caf50;
+background: #4caf50;
 }
 .action-btn.refund-btn:hover {
-  background: #388e3c;
+background: #388e3c;
 }
 .action-btn.approve-btn {
-  background: #2196f3;
+background: #2196f3;
 }
 .action-btn.approve-btn:hover {
-  background: #1976d2;
+background: #1976d2;
 }
-.action-btn.purple-btn {
-  background: #9c27b0;
+.email-cell {
+max-width: 200px;
+white-space: nowrap;
+overflow-x: auto;
+scrollbar-width: thin;
 }
-.action-btn.purple-btn:hover {
-  background: #7b1fa2;
+.refund-request {
+background: rgba(33, 150, 243, 0.15);
 }
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 20px;
-  margin-top: 15px;
-}
-.setting-card {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(91, 140, 255, 0.18);
-  border-radius: 20px;
-  padding: 18px;
-}
-.setting-card h3 {
-  font-family: 'Orbitron';
-  font-size: 1rem;
-  color: #ffcc00;
-  margin-bottom: 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.proxy-row {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.proxy-input-group {
-  flex: 1;
-  min-width: 260px;
-}
-.proxy-input-group label,
-.switch-label {
-  display: block;
-  font-size: 0.85rem;
-  color: #8a9bb0;
-  margin-bottom: 8px;
-}
-.proxy-input {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background: #121827;
-  border: 1px solid #2a3a60;
-  color: #fff;
-  outline: none;
-}
-.proxy-input:focus {
-  border-color: #5b8cff;
-  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.15);
-}
-.toggle-box {
-  min-width: 180px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(91, 140, 255, 0.15);
-  border-radius: 18px;
-  padding: 14px 16px;
-}
-.toggle-inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: bold;
-}
-.toggle-inline input[type="checkbox"] {
-  transform: scale(1.2);
-  accent-color: #5b8cff;
-}
-.proxy-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 16px;
-}
-.proxy-note {
-  margin-top: 14px;
-  font-size: 12px;
-  color: #aaa;
-  line-height: 1.6;
-}
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 999px;
-  padding: 8px 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(91, 140, 255, 0.2);
-  font-size: 0.85rem;
-}
-.server-ip-box {
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 18px;
-  padding: 18px;
-  border-left: 3px solid #ffcc00;
-  height: 100%;
-}
-.server-ip-box .label {
-  font-size: 0.8rem;
-  color: #ffcc00;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 14px;
-}
-.server-ip-box .ip-line {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(91, 140, 255, 0.14);
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-}
-.server-ip-box .ip-line .small {
-  font-size: 0.72rem;
-  color: #8a9bb0;
-  margin-bottom: 6px;
-}
-.server-ip-box .ip-line .big {
-  font-family: 'Orbitron';
-  font-size: 0.98rem;
-  font-weight: bold;
-  color: #fff;
-  word-break: break-word;
-}
-
 .footer {
-  text-align: center;
-  padding: 20px;
-  margin-top: 30px;
-  border-top: 1px solid #2a3a60;
-  color: #8a9bb0;
-  font-size: 0.7rem;
-}
-
-@media (max-width: 992px) {
-  .settings-grid {
-    grid-template-columns: 1fr;
-  }
+text-align: center;
+padding: 20px;
+margin-top: 30px;
+border-top: 1px solid #2a3a60;
+color: #8a9bb0;
+font-size: 0.7rem;
 }
 @media (max-width: 768px) {
-  .top-bar {
-    flex-direction: column;
-    gap: 15px;
-    text-align: center;
-  }
-  .admin-profile {
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  .section-title {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .search-box input {
-    width: 100%;
-  }
-  th, td {
-    padding: 8px 10px;
-    font-size: 0.8rem;
-  }
-  .proxy-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.top-bar {
+flex-direction: column;
+gap: 15px;
+text-align: center;
+}
+.admin-profile {
+justify-content: center;
+}
+.stats-grid {
+grid-template-columns: 1fr;
+}
+.section-title {
+flex-direction: column;
+align-items: flex-start;
+}
+.search-box input {
+width: 100%;
+}
+th, td {
+padding: 8px 10px;
+font-size: 0.8rem;
+}
 }
 </style>
 </head>
 <body>
 <div class="dashboard-container">
-
-  <div class="top-bar">
-    <div class="logo-area">
-      <h1><i class="fas fa-chart-line"></i> ${SITE_NAME} | ADMIN</h1>
-    </div>
-    <div class="admin-profile">
-      <img src="${req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50)}" class="admin-avatar" alt="Admin">
-      <div class="admin-info">
-        <div class="admin-name">${escapeHTML(req.user.name)}</div>
-        <div class="admin-role">Administrator</div>
-      </div>
-      <a href="/profile" class="back-link"><i class="fas fa-arrow-left"></i> Profil</a>
-    </div>
-  </div>
-
-  <!-- STATUS WEB PALING ATAS -->
-  <div class="section-shell">
-    <div class="server-status-section">
-      <div class="section-header">
-        <h2><i class="fas fa-server"></i> Status Web & Server</h2>
-        <span class="last-update" id="lastUpdateTime">Memuat...</span>
-      </div>
-
-      <div class="status-metrics">
-        <div class="metric-card">
-          <div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
-          <div class="bar-container" id="cpuBars"></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
-          <div class="bar-container" id="memBars"></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
-          <div class="bar-container" id="netBars"></div>
-        </div>
-      </div>
-
-      <div class="info-grid" id="serverInfoGrid">
-        <div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
-        <div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
-        <div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
-        <div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- STATISTIK -->
-  <div class="section-shell">
-    <div class="section-header" style="margin-bottom: 20px;">
-      <h2><i class="fas fa-chart-pie"></i> Ringkasan Sistem</h2>
-    </div>
-    <div class="stats-grid">
-      <div class="stat-card"><h3><i class="fas fa-users"></i> Total Pengguna</h3><div class="number">${totalUsers}</div></div>
-      <div class="stat-card"><h3><i class="fas fa-shopping-cart"></i> Total Order</h3><div class="number">${totalOrders}</div></div>
-      <div class="stat-card"><h3><i class="fas fa-wallet"></i> Pendapatan</h3><div class="number">Rp ${totalRevenue.toLocaleString('id-ID')}</div></div>
-      <div class="stat-card"><h3><i class="fas fa-triangle-exclamation"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
-      <div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
-    </div>
-  </div>
-
-  <!-- VERIF CANCEL -->
-  <div class="section-title">
-    <span><i class="fas fa-clock"></i> Verif Cancel</span>
-    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
-  </div>
-  <div class="table-wrapper scrollable-table">
-    <table id="refundTable">
-      <thead>
-        <tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Diajukan</th><th>Aksi</th></tr>
-      </thead>
-      <tbody>
-        ${refundRequests.map(r => `
-        <tr class="refund-request">
-          <td>${r.order_id}</td>
-          <td class="email-cell" title="${escapeHTML(r.email)}">${escapeHTML(r.email)}</td>
-          <td>${r.panel_type.toUpperCase()}</td>
-          <td>Rp ${r.amount.toLocaleString('id-ID')}</td>
-          <td>${new Date(r.requested_at).toLocaleString('id-ID')}</td>
-          <td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
-        </tr>
-        `).join('')}
-        ${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- USER -->
-  <div class="section-title">
-    <span><i class="fas fa-users"></i> Daftar User</span>
-    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchUser" placeholder="Cari nama/email..."></div>
-  </div>
-  <div class="table-wrapper scrollable-table">
-    <table id="userTable">
-      <thead>
-        <tr><th>ID</th><th>Profil</th><th>Nama</th><th>Email</th><th>Bergabung</th><th>Panel Dibeli</th><th>Pending</th><th>Cancel/Refund</th><th>Bio</th></tr>
-      </thead>
-      <tbody>
-        ${userData.map(u => `
-        <tr>
-          <td>${u.id}</td>
-          <td><img src="${u.photo}" class="user-avatar" alt="Avatar"></td>
-          <td>${escapeHTML(u.name)}</td>
-          <td class="email-cell" title="${escapeHTML(u.email)}">${escapeHTML(u.email)}</td>
-          <td>${u.joined}</td>
-          <td>${u.purchasedCount}</td>
-          <td>${u.pendingCount}</td>
-          <td>${u.cancelCount}</td>
-          <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
-        </tr>
-        `).join('')}
-        ${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- ORDER -->
-  <div class="section-title">
-    <span><i class="fas fa-shopping-cart"></i> Order Terbaru</span>
-    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchOrder" placeholder="Cari order/email..."></div>
-  </div>
-  <div class="table-wrapper scrollable-table">
-    <table id="orderTable">
-      <thead>
-        <tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr>
-      </thead>
-      <tbody>
-        ${sortedOrders.slice(0, 100).map(o => {
-          let actionBtn = '';
-          if (o.status === 'pending') {
-            actionBtn = `<button class="action-btn" onclick="cancelOrder('${o.order_id}')">Batalkan</button>`;
-          } else if (o.status === 'paid' || o.status === 'completed') {
-            actionBtn = `<button class="action-btn refund-btn" onclick="refundOrder('${o.order_id}')">Refund (Manual)</button>`;
-          }
-          return `
-          <tr>
-            <td>${o.order_id}</td>
-            <td class="email-cell" title="${escapeHTML(o.email)}">${escapeHTML(o.email)}</td>
-            <td>${o.panel_type.toUpperCase()}</td>
-            <td>Rp ${o.amount.toLocaleString('id-ID')}</td>
-            <td class="status-${o.status === 'paid' || o.status === 'completed' ? 'paid' : (o.status === 'cancel' || o.status === 'refunded' ? 'cancel' : 'pending')}">${o.status}</td>
-            <td>${new Date(o.created_at).toLocaleDateString('id-ID')}</td>
-            <td>${actionBtn}</td>
-          </tr>
-          `;
-        }).join('')}
-        ${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- SEMUA PENGATURAN WEB DI BAWAH -->
-  <div class="section-shell" style="margin-top: 40px;">
-    <div class="settings-section">
-      <div class="section-header">
-        <h2><i class="fas fa-sliders-h"></i> Pengaturan Web</h2>
-        <span class="status-pill"><i class="fas fa-shield-halved"></i> Konfigurasi Admin</span>
-      </div>
-
-      <div class="settings-grid">
-
-        <!-- PROXY SETTING -->
-        <div class="setting-card">
-          <h3><i class="fas fa-network-wired"></i> Proxy Configuration (Outbound)</h3>
-
-          <div class="proxy-row">
-            <div class="toggle-box">
-              <div class="switch-label">Status Proxy</div>
-              <label class="toggle-inline">
-                <input type="checkbox" id="proxyEnabled">
-                <span>Aktifkan Proxy</span>
-              </label>
-            </div>
-
-            <div class="proxy-input-group">
-              <label>Proxy URL (http:// atau https://)</label>
-              <input type="text" id="proxyUrl" class="proxy-input" placeholder="http://user:pass@host:port atau https://host:port">
-            </div>
-          </div>
-
-          <div class="proxy-actions">
-            <button id="saveProxyBtn" class="action-btn approve-btn">Simpan</button>
-            <button id="testProxyBtn" class="action-btn purple-btn">Test Proxy</button>
-            <div id="proxyStatusBadge" class="status-pill">Memuat...</div>
-          </div>
-
-          <div class="proxy-note">
-            <i class="fas fa-info-circle"></i>
-            Proxy akan digunakan untuk semua request ke Mustika Payment API.
-          </div>
-        </div>
-
-        <!-- INFO SERVER / PROXY -->
-        <div class="setting-card">
-          <h3><i class="fas fa-globe"></i> Info Proxy & Server</h3>
-
-          <div class="server-ip-box">
-            <div class="label">SERVER NETWORK INFORMATION</div>
-
-            <div class="ip-line">
-              <div class="small">Public IP</div>
-              <div class="big">${serverPublicIp}</div>
-            </div>
-
-            <div class="ip-line">
-              <div class="small">Request / Local IP</div>
-              <div class="big">${clientIp}</div>
-            </div>
-
-            <div class="ip-line">
-              <div class="small">Proxy Mode</div>
-              <div class="big" id="proxyModeText">Checking...</div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
-  <div class="footer">
-    <p>© 2026 ${SITE_NAME} Admin Panel • ${config.DEVELOPER} • v${config.VERSI_WEB}</p>
-  </div>
-
+<div class="top-bar">
+<div class="logo-area">
+<h1><i class="fas fa-chart-line"></i> ${SITE_NAME} | ADMIN</h1>
 </div>
-
+<div class="admin-profile">
+<img src="${req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50)}" class="admin-avatar" alt="Admin">
+<div class="admin-info">
+<div class="admin-name">${escapeHTML(req.user.name)}</div>
+<div class="admin-role">Administrator</div>
+</div>
+<a href="/profile" class="back-link"><i class="fas fa-arrow-left"></i> Profil</a>
+</div>
+</div>
+<div class="stats-grid">
+<div class="stat-card"><h3><i class="fas fa-users"></i> Total Pengguna</h3><div class="number">${totalUsers}</div></div>
+<div class="stat-card"><h3><i class="fas fa-shopping-cart"></i> Total Order</h3><div class="number">${totalOrders}</div></div>
+<div class="stat-card"><h3><i class="fas fa-chart-line"></i> Pendapatan</h3><div class="number">Rp ${totalRevenue.toLocaleString('id-ID')}</div></div>
+<div class="stat-card"><h3><i class="fas fa-chart-line"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
+<div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
+</div>
+<div class="server-status-section">
+<div class="section-header">
+<h2><i class="fas fa-server"></i> Server Status</h2>
+<span class="last-update" id="lastUpdateTime">Memuat...</span>
+</div>
+<div class="status-metrics">
+<div class="metric-card">
+<div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
+<div class="bar-container" id="cpuBars"></div>
+</div>
+<div class="metric-card">
+<div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
+<div class="bar-container" id="memBars"></div>
+</div>
+<div class="metric-card">
+<div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
+<div class="bar-container" id="netBars"></div>
+</div>
+</div>
+<div class="info-grid" id="serverInfoGrid">
+<div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
+<div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
+<div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
+<div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
+</div>
+</div>
+<div class="section-title">
+<span><i class="fas fa-clock"></i> Verif cancel</span>
+<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
+</div>
+<div class="table-wrapper scrollable-table">
+<table id="refundTable">
+<thead>
+<tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Diajukan</th><th>Aksi</th></tr>
+</thead>
+<tbody>
+${refundRequests.map(r => `
+<tr class="refund-request">
+<td>${r.order_id}</td>
+<td class="email-cell" title="${escapeHTML(r.email)}">${escapeHTML(r.email)}</td>
+<td>${r.panel_type.toUpperCase()}</td>
+<td>Rp ${r.amount.toLocaleString('id-ID')}</td>
+<td>${new Date(r.requested_at).toLocaleString('id-ID')}</td>
+<td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
+</tr>
+`).join('')}
+${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
+</tbody>
+</table>
+</div>
+<div class="section-title">
+<span><i class="fas fa-users"></i> Daftar User</span>
+<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchUser" placeholder="Cari nama/email..."></div>
+</div>
+<div class="table-wrapper scrollable-table">
+<table id="userTable">
+<thead>
+<tr><th>ID</th><th>Profil</th><th>Nama</th><th>Email</th><th>Bergabung</th><th>Panel Dibeli</th><th>Pending</th><th>Cancel/Refund</th><th>Bio</th></tr>
+</thead>
+<tbody>
+${userData.map(u => `
+<tr>
+<td>${u.id}</td>
+<td><img src="${u.photo}" class="user-avatar" alt="Avatar"></td>
+<td>${escapeHTML(u.name)}</td>
+<td class="email-cell" title="${escapeHTML(u.email)}">${escapeHTML(u.email)}</td>
+<td>${u.joined}</td>
+<td>${u.purchasedCount}</td>
+<td>${u.pendingCount}</td>
+<td>${u.cancelCount}</td>
+<td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
+</tr>
+`).join('')}
+${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
+</tbody>
+</table>
+</div>
+<div class="section-title">
+<span><i class="fas fa-shopping-cart"></i> Order Terbaru</span>
+<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchOrder" placeholder="Cari order/email..."></div>
+</div>
+<div class="table-wrapper scrollable-table">
+<table id="orderTable">
+<thead>
+<tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr>
+</thead>
+<tbody>
+${sortedOrders.slice(0, 100).map(o => {
+let actionBtn = '';
+if (o.status === 'pending') {
+actionBtn = `<button class="action-btn" onclick="cancelOrder('${o.order_id}')">Batalkan</button>`;
+} else if (o.status === 'paid' || o.status === 'completed') {
+actionBtn = `<button class="action-btn refund-btn" onclick="refundOrder('${o.order_id}')">Refund (Manual)</button>`;
+}
+return `
+<tr>
+<td>${o.order_id}</td>
+<td class="email-cell" title="${escapeHTML(o.email)}">${escapeHTML(o.email)}</td>
+<td>${o.panel_type.toUpperCase()}</td>
+<td>Rp ${o.amount.toLocaleString('id-ID')}</td>
+<td class="status-${o.status === 'paid' || o.status === 'completed' ? 'paid' : (o.status === 'cancel' || o.status === 'refunded' ? 'cancel' : 'pending')}">${o.status}</td>
+<td>${new Date(o.created_at).toLocaleDateString('id-ID')}</td>
+<td>${actionBtn}</td>
+</tr>
+`;
+}).join('')}
+${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
+</tbody>
+</table>
+</div>
+<div class="footer">
+<p>© 2026 ${SITE_NAME} Admin Panel • ${config.DEVELOPER} • v${config.VERSI_WEB}</p>
+</div>
+</div>
 <script>
 function initBars(containerId, barCount = 20) {
-  const container = document.getElementById(containerId);
-  if (!container) return [];
-  container.innerHTML = '';
-  for (let i = 0; i < barCount; i++) {
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    bar.style.height = '5px';
-    container.appendChild(bar);
-  }
-  return Array.from(container.children);
+const container = document.getElementById(containerId);
+if (!container) return [];
+container.innerHTML = '';
+for (let i = 0; i < barCount; i++) {
+const bar = document.createElement('div');
+bar.className = 'bar';
+bar.style.height = '5px';
+container.appendChild(bar);
 }
-
+return Array.from(container.children);
+}
 function getColorForHeight(height, maxHeight) {
-  const ratio = Math.min(1, Math.max(0, height / maxHeight));
-  const hue = 120 * (1 - ratio);
-  return 'hsl(' + hue + ', 100%, 60%)';
+const ratio = Math.min(1, Math.max(0, height / maxHeight));
+const hue = 120 * (1 - ratio);
+return 'hsl(' + hue + ', 100%, 60%)';
 }
-
 function updateBars(bars, basePercent) {
-  if (!bars || bars.length === 0) return;
-  const maxHeight = 70;
-  bars.forEach((bar) => {
-    let randomFactor = (Math.random() - 0.5) * 0.3;
-    let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
-    let height = (percent / 100) * maxHeight;
-    bar.style.height = height + 'px';
-    bar.style.background = getColorForHeight(height, maxHeight);
-  });
+if (!bars || bars.length === 0) return;
+const maxHeight = 70;
+bars.forEach((bar, idx) => {
+let randomFactor = (Math.random() - 0.5) * 0.3;
+let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
+let height = (percent / 100) * maxHeight;
+bar.style.height = height + 'px';
+bar.style.background = getColorForHeight(height, maxHeight);
+});
 }
-
 const cpuBars = initBars('cpuBars', 20);
 const memBars = initBars('memBars', 20);
 const netBars = initBars('netBars', 20);
-
 function updateMetrics() {
-  const cpu = (Math.random() * 40).toFixed(1);
-  const mem = Math.floor(Math.random() * 500);
-  const net = Math.floor(Math.random() * 800);
-
-  document.getElementById('cpuValue').innerText = cpu + '%';
-  document.getElementById('memValue').innerText = mem + ' MiB';
-  document.getElementById('netValue').innerText = net + ' B/s';
-
-  updateBars(cpuBars, parseFloat(cpu));
-  updateBars(memBars, (mem / 500) * 100);
-  updateBars(netBars, (net / 1000) * 100);
+const cpu = (Math.random() * 40).toFixed(1);
+const mem = Math.floor(Math.random() * 500);
+const net = Math.floor(Math.random() * 800);
+document.getElementById('cpuValue').innerText = cpu + '%';
+document.getElementById('memValue').innerText = mem + ' MiB';
+document.getElementById('netValue').innerText = net + ' B/s';
+updateBars(cpuBars, parseFloat(cpu));
+updateBars(memBars, (mem / 500) * 100);
+updateBars(netBars, (net / 1000) * 100);
 }
-
 async function fetchServerStatus() {
-  try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
-
-    document.getElementById('serverVersion').innerText = data.version;
-    document.getElementById('serverDev').innerText = data.developer;
-    document.getElementById('serverUptime').innerText = formatUptime(data.uptime);
-    document.getElementById('serverTime').innerText = new Date(data.timestamp).toLocaleTimeString('id-ID');
-    document.getElementById('lastUpdateTime').innerText = 'Diperbarui: ' + new Date().toLocaleTimeString('id-ID');
-  } catch (e) {
-    document.getElementById('serverVersion').innerText = 'Error';
-    document.getElementById('serverDev').innerText = 'Error';
-    document.getElementById('serverUptime').innerText = 'Error';
-    document.getElementById('serverTime').innerText = 'Error';
-  }
+try {
+const res = await fetch('/api/status');
+const data = await res.json();
+document.getElementById('serverVersion').innerText = data.version;
+document.getElementById('serverDev').innerText = data.developer;
+const uptime = formatUptime(data.uptime);
+document.getElementById('serverUptime').innerText = uptime;
+document.getElementById('serverTime').innerText = new Date(data.timestamp).toLocaleTimeString('id-ID');
+document.getElementById('lastUpdateTime').innerText = 'Diperbarui: ' + new Date().toLocaleTimeString('id-ID');
+} catch (e) {
+document.getElementById('serverVersion').innerText = 'Error';
+document.getElementById('serverDev').innerText = 'Error';
+document.getElementById('serverUptime').innerText = 'Error';
+document.getElementById('serverTime').innerText = 'Error';
 }
-
+}
 function formatUptime(seconds) {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  return d + 'd ' + h + 'h ' + m + 'm ' + s + 's';
+const d = Math.floor(seconds / 86400);
+const h = Math.floor((seconds % 86400) / 3600);
+const m = Math.floor((seconds % 3600) / 60);
+const s = Math.floor(seconds % 60);
+return d + 'd ' + h + 'h ' + m + 'm ' + s + 's';
 }
-
 setInterval(() => {
-  updateMetrics();
-  fetchServerStatus();
-}, 5000);
-
 updateMetrics();
 fetchServerStatus();
-
+}, 5000);
+updateMetrics();
+fetchServerStatus();
 function filterTable(inputId, tableId) {
-  const input = document.getElementById(inputId);
-  if (!input) return;
-  input.addEventListener('keyup', function() {
-    const filter = this.value.toLowerCase();
-    const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
-    rows.forEach(row => {
-      const text = row.innerText.toLowerCase();
-      row.style.display = text.includes(filter) ? '' : 'none';
-    });
-  });
+const input = document.getElementById(inputId);
+if (!input) return;
+input.addEventListener('keyup', function() {
+const filter = this.value.toLowerCase();
+const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
+rows.forEach(row => {
+const text = row.innerText.toLowerCase();
+row.style.display = text.includes(filter) ? '' : 'none';
+});
+});
 }
-
 filterTable('searchRefund', 'refundTable');
 filterTable('searchUser', 'userTable');
 filterTable('searchOrder', 'orderTable');
-
 async function cancelOrder(orderId) {
-  if (!confirm('Yakin ingin membatalkan order pending ini? Dana akan dikembalikan ke user.')) return;
-  try {
-    const res = await fetch('/api/cancel-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert('Order berhasil dibatalkan');
-      location.reload();
-    } else {
-      alert('Gagal: ' + (data.message || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error(err);
-    alert('Terjadi kesalahan, coba lagi nanti.');
-  }
+if (!confirm('Yakin ingin membatalkan order pending ini? Dana akan dikembalikan ke user.')) return;
+try {
+const res = await fetch('/api/cancel-order', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ order_id: orderId })
+});
+const data = await res.json();
+if (data.success) {
+alert('Order berhasil dibatalkan');
+location.reload();
+} else {
+alert('Gagal: ' + (data.message || 'Unknown error'));
 }
-
+} catch (err) {
+console.error(err);
+alert('Terjadi kesalahan, coba lagi nanti.');
+}
+}
 async function refundOrder(orderId) {
-  if (!confirm('Yakin ingin melakukan refund untuk order ini? Dana harus dikembalikan secara manual di dashboard Pakasir, dan server akan dinonaktifkan.')) return;
-  try {
-    const res = await fetch('/api/approve-refund', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert('Refund berhasil diproses');
-      location.reload();
-    } else {
-      alert('Gagal: ' + (data.message || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error(err);
-    alert('Terjadi kesalahan, coba lagi nanti.');
-  }
+if (!confirm('Yakin ingin melakukan refund untuk order ini? Dana harus dikembalikan secara manual di dashboard Pakasir, dan server akan dinonaktifkan.')) return;
+try {
+const res = await fetch('/api/approve-refund', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ order_id: orderId })
+});
+const data = await res.json();
+if (data.success) {
+alert('Refund berhasil diproses');
+location.reload();
+} else {
+alert('Gagal: ' + (data.message || 'Unknown error'));
 }
-
+} catch (err) {
+console.error(err);
+alert('Terjadi kesalahan, coba lagi nanti.');
+}
+}
 async function approveRefund(orderId) {
-  if (!confirm('Setujui refund untuk order ini? Server akan dihapus dan status order akan diubah menjadi refunded. Dana harus dikembalikan secara manual di dashboard Pakasir.')) return;
-  try {
-    const res = await fetch('/api/approve-refund', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      alert('Refund berhasil disetujui dan diproses');
-      location.reload();
-    } else {
-      alert('Gagal: ' + (data.message || 'Unknown error'));
-    }
-  } catch (err) {
-    console.error(err);
-    alert('Terjadi kesalahan, coba lagi nanti.');
-  }
-}
-
-// Proxy Configuration
-let proxyConfig = { enabled: false, url: '' };
-
-async function loadProxyConfigAdmin() {
-  try {
-    const res = await fetch('/api/admin/proxy-config');
-    const data = await res.json();
-    if (data.success) {
-      proxyConfig = data.config;
-      document.getElementById('proxyEnabled').checked = proxyConfig.enabled;
-      document.getElementById('proxyUrl').value = proxyConfig.url || '';
-      updateProxyStatusBadge();
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-function updateProxyStatusBadge() {
-  const badge = document.getElementById('proxyStatusBadge');
-  const modeText = document.getElementById('proxyModeText');
-
-  if (proxyConfig.enabled && proxyConfig.url) {
-    badge.innerHTML = '<span style="color:#4caf50;">✓ AKTIF</span>';
-    badge.title = proxyConfig.url;
-    if (modeText) modeText.innerText = 'Enabled';
-  } else {
-    badge.innerHTML = '<span style="color:#f44336;">✗ NONAKTIF</span>';
-    if (modeText) modeText.innerText = 'Disabled';
-  }
-}
-
-document.getElementById('saveProxyBtn')?.addEventListener('click', async () => {
-  const enabled = document.getElementById('proxyEnabled').checked;
-  const url = document.getElementById('proxyUrl').value.trim();
-  const btn = document.getElementById('saveProxyBtn');
-  const originalText = btn.innerText;
-
-  btn.innerText = 'Menyimpan...';
-  btn.disabled = true;
-
-  try {
-    const res = await fetch('/api/admin/proxy-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, url })
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      proxyConfig = data.config;
-      updateProxyStatusBadge();
-      alert('Konfigurasi proxy berhasil disimpan');
-    } else {
-      alert('Gagal: ' + data.error);
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    btn.innerText = originalText;
-    btn.disabled = false;
-  }
+if (!confirm('Setujui refund untuk order ini? Server akan dihapus dan status order akan diubah menjadi refunded. Dana harus dikembalikan secara manual di dashboard Pakasir.')) return;
+try {
+const res = await fetch('/api/approve-refund', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ order_id: orderId })
 });
-
-document.getElementById('testProxyBtn')?.addEventListener('click', async () => {
-  const enabled = document.getElementById('proxyEnabled').checked;
-  const url = document.getElementById('proxyUrl').value.trim();
-  const btn = document.getElementById('testProxyBtn');
-  const originalText = btn.innerText;
-
-  btn.innerText = 'Testing...';
-  btn.disabled = true;
-
-  try {
-    const res = await fetch('/api/admin/test-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, url })
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      alert(
-        'Proxy berhasil!\\n' +
-        'IP keluar: ' + data.ip + '\\n' +
-        'Latency: ' + data.latency + '\\n' +
-        data.message
-      );
-    } else {
-      alert('Proxy gagal: ' + data.message);
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    btn.innerText = originalText;
-    btn.disabled = false;
-  }
-});
-
-loadProxyConfigAdmin();
+const data = await res.json();
+if (data.success) {
+alert('Refund berhasil disetujui dan diproses');
+location.reload();
+} else {
+alert('Gagal: ' + (data.message || 'Unknown error'));
+}
+} catch (err) {
+console.error(err);
+alert('Terjadi kesalahan, coba lagi nanti.');
+}
+}
 </script>
 </body>
 </html>
@@ -4207,26 +3688,26 @@ loadProxyConfigAdmin();
     res.send(html);
   });
 
-  // ==========================================================================
-  // HOME
-  // ==========================================================================
-  app.get('/', async (req, res) => {
-    const isLoggedIn = req.isAuthenticated();
-    const user = isLoggedIn ? req.user : null;
-    const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
-    const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
-    const users = await getUsers();
-    const orders = await getOrders();
-    const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
-    let totalPurchases = 0;
-    if (user) {
-      totalPurchases = orders
-        .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-        .reduce((sum, o) => sum + o.amount, 0);
-    }
-    const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
-    const telegramUsername = (config.DEVELOPER || '').replace('@', '');
-    const html = `
+// ==========================================================================
+// HALAMAN UTAMA (HOME) – BACKGROUND VIDEO, SLIDE-IN ANIMATION
+// ==========================================================================
+app.get('/', async (req, res) => {
+  const isLoggedIn = req.isAuthenticated();
+  const user = isLoggedIn ? req.user : null;
+  const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
+  const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
+  const users = await getUsers();
+  const orders = await getOrders();
+  const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
+  let totalPurchases = 0;
+  if (user) {
+    totalPurchases = orders
+      .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
+      .reduce((sum, o) => sum + o.amount, 0);
+  }
+  const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
+  const telegramUsername = (config.DEVELOPER || '').replace('@', '');
+  const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -4940,6 +4421,7 @@ ${isLoggedIn ? `
 </div>
 <script>
 const isLoggedIn = ${isLoggedIn};
+// Tidak ada lagi partikel canvas, background video sudah ada
 const menuBtn = document.getElementById('menuBtn');
 const statusPanel = document.getElementById('statusPanel');
 const pageContainer = document.getElementById('pageContainer');
@@ -5106,8 +4588,8 @@ generatePriceCards();
 </body>
 </html>
 `;
-    res.send(html);
-  });
+  res.send(html);
+});
 
   // ==========================================================================
   // 404 HANDLER
@@ -5144,7 +4626,7 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS
+// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT)
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
@@ -5164,7 +4646,7 @@ async function autoCancelExpiredOrders() {
 setInterval(autoCancelExpiredOrders, 30000);
 
 // ============================================================================
-// INISIALISASI GITHUB
+// INISIALISASI GITHUB DARI URL
 // ============================================================================
 async function initGithub() {
   const tokenConfig = config.GITHUB_TOKEN;
@@ -5193,7 +4675,6 @@ async function initGithub() {
 async function startServer() {
   try {
     await initGithub();
-    await loadProxyConfig(); // Load konfigurasi proxy dari GitHub
     sessionStore = new GitHubSessionStore(octokit, owner, repo, GITHUB_BRANCH, `${GITHUB_PATH}/sessions`);
     app.use(session({
       secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
