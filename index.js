@@ -23,14 +23,16 @@ const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
+
+// Konfigurasi Mustika Payment
 const MUSTIKA_API_KEY = config.MUSTIKA_API_KEY;
 if (!MUSTIKA_API_KEY) {
   console.error('❌ MUSTIKA_API_KEY tidak ditemukan di setting.js');
   process.exit(1);
 }
 const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
-const PROXY_URL = 'https://noble:fp_5dce2cbd8898b723@p-8b9327a0.noble-ip.com:3129';
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+
+// Variabel global untuk proxy dan GitHub
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -38,6 +40,10 @@ let GITHUB_PATH = 'data';
 let octokit = null;
 let owner, repo;
 const sessionCache = new Map();
+
+// Konfigurasi proxy (akan disimpan di GitHub)
+let currentProxyConfig = { enabled: false, url: '' };
+const PROXY_CONFIG_PATH = `${GITHUB_PATH}/proxy_config.json`.replace(/\/+/g, '/');
 
 // ============================================================================
 // KELAS GITHUB SESSION STORE
@@ -896,7 +902,43 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI MUSTIKA PAYMENT
+// FUNGSI PROXY DINAMIS
+// ============================================================================
+async function loadProxyConfig() {
+  try {
+    const { content } = await readGitHubFile(PROXY_CONFIG_PATH);
+    if (content) {
+      currentProxyConfig = content;
+    } else {
+      currentProxyConfig = { enabled: false, url: '' };
+      await saveProxyConfig(currentProxyConfig);
+    }
+  } catch (err) {
+    console.error('Gagal load proxy config:', err);
+    currentProxyConfig = { enabled: false, url: '' };
+  }
+  return currentProxyConfig;
+}
+
+async function saveProxyConfig(config) {
+  await writeGitHubFileWithRetry(PROXY_CONFIG_PATH, config);
+  currentProxyConfig = config;
+}
+
+function getProxyAgent() {
+  if (currentProxyConfig.enabled && currentProxyConfig.url) {
+    try {
+      return new HttpsProxyAgent(currentProxyConfig.url);
+    } catch (e) {
+      console.error('Proxy agent error:', e);
+      return null;
+    }
+  }
+  return null;
+}
+
+// ============================================================================
+// FUNGSI MUSTIKA PAYMENT (dengan proxy dinamis)
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   const apiUrl = 'https://mustikapayment.com/api/createpay';
@@ -906,18 +948,33 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
   params.append('customer_name', customer_name);
   params.append('product_name', product_name);
 
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': MUSTIKA_API_KEY,  // pastikan variabel ini ada
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params.toString(),
-      agent: proxyAgent   // <-- ini yang membuat request melalui proxy
-    });
+  const agent = getProxyAgent();
+  const fetchOptions = {
+    method: 'POST',
+    headers: {
+      'X-Api-Key': MUSTIKA_API_KEY,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params.toString()
+  };
+  if (agent) fetchOptions.agent = agent;
 
-    const data = await response.json();
+  try {
+    const response = await fetch(apiUrl, fetchOptions);
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('HTTP Error:', response.status, text);
+      throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
+    }
+    const rawText = await response.text();
+    console.log('Raw response:', rawText);
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.error('Gagal parse JSON:', rawText);
+      throw new Error('Respons dari Mustika bukan JSON: ' + rawText.substring(0, 100));
+    }
     if (data.status === 'success' && data.payment_link) {
       return {
         success: true,
@@ -1044,7 +1101,7 @@ Crawl-delay: 1
         status: 'pending',
         created_at: new Date().toISOString(),
         panel_created: false,
-        ref_no: mustikaRes.ref_no  // simpan ref_no dari Mustika
+        ref_no: mustikaRes.ref_no
       };
       await addOrder(order);
       
@@ -1056,8 +1113,7 @@ Crawl-delay: 1
     }
   });
 
-  // Endpoint check-payment tidak lagi digunakan karena kita mengandalkan callback.
-  // Namun tetap ada untuk kompatibilitas (selalu mengembalikan status pending)
+  // Endpoint check-payment tidak digunakan lagi
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
     res.json({ success: true, status: 'pending', message: 'Gunakan callback untuk konfirmasi pembayaran' });
   });
@@ -1104,16 +1160,13 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // PAYMENT CALLBACK (MENERIMA POST & GET)
+  // PAYMENT CALLBACK (POST & GET)
   // ==========================================================================
   app.post('/payment-callback', async (req, res) => {
-    // Proses callback dari Mustika (biasanya POST)
-    // Data yang dikirim tidak diketahui, asumsikan ada ref_no
     const { ref_no, status, order_id } = req.body;
     if (!ref_no && !order_id) {
       return res.status(400).send('Missing ref_no or order_id');
     }
-    // Cari order berdasarkan ref_no
     let order = null;
     if (ref_no) {
       const orders = await getOrders();
@@ -1124,15 +1177,12 @@ Crawl-delay: 1
     if (!order) {
       return res.status(404).send('Order tidak ditemukan');
     }
-    // Jika sudah diproses, langsung sukses
     if (order.panel_created) {
       return res.redirect(`/profile?order=${order.order_id}`);
     }
-    // Proses pembuatan panel
     await processSuccessfulPayment(order, res);
   });
 
-  // Endpoint GET untuk kompatibilitas (jika Mustika redirect dengan GET)
   app.get('/payment-callback', async (req, res) => {
     const { ref_no, order_id, status } = req.query;
     if (!ref_no && !order_id) {
@@ -1154,13 +1204,10 @@ Crawl-delay: 1
     await processSuccessfulPayment(order, res);
   });
 
-  // Fungsi bersama untuk memproses pembayaran sukses
   async function processSuccessfulPayment(order, res) {
     try {
-      // Update status order menjadi paid
       await updateOrder(order.order_id, { status: 'paid' });
       
-      // Buat panel
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
       const user = await findUserByEmail(order.email);
@@ -1196,7 +1243,7 @@ Crawl-delay: 1
         });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
-      // Kirim notifikasi Telegram ke owner
+      // Kirim notifikasi Telegram
       const now = new Date();
       const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
       const dayName = formatterDay.format(now);
@@ -1227,7 +1274,6 @@ Crawl-delay: 1
         });
       } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       
-      // Tampilkan halaman sukses
       const updatedOrder = await findOrderById(order.order_id);
       const panel = updatedOrder.panel_data;
       const userCred = updatedOrder.user_data;
@@ -1545,7 +1591,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   }
 
   // ==========================================================================
-  // API REFUND ORDER (DIUBAH)
+  // API REFUND ORDER
   // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
@@ -1554,7 +1600,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       
-      // Untuk pending: hapus order dari database (tanpa API eksternal)
       if (order.status === 'pending') {
         const activeOrders = await getOrders();
         const newActive = activeOrders.filter(o => o.order_id !== order_id);
@@ -1565,7 +1610,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
         return res.json({ success: true, message: 'Order berhasil dibatalkan' });
       }
       
-      // Untuk paid: buat refund request (admin harus proses manual di Mustika)
       if (order.status === 'paid' || order.status === 'completed') {
         const isAdminUser = req.user.email === config.ADMIN_EMAIL;
         const paymentTime = new Date(order.created_at).getTime();
@@ -1587,7 +1631,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API APPROVE REFUND (ADMIN) - SAMA SEPERTI SEBELUMNYA
+  // API APPROVE REFUND (ADMIN)
   // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1626,7 +1670,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
+  // API CANCEL ORDER (ADMIN)
   // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1655,6 +1699,33 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   // ==========================================================================
   app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: config.VERSI_WEB, developer: config.DEVELOPER, uptime: process.uptime(), timestamp: Date.now() });
+  });
+
+  // ==========================================================================
+  // API KONFIGURASI PROXY (ADMIN)
+  // ==========================================================================
+  app.get('/api/admin/proxy-config', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await loadProxyConfig();
+      res.json({ success: true, config: currentProxyConfig });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/api/admin/proxy-config', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { enabled, url } = req.body;
+      const newConfig = {
+        enabled: enabled === true || enabled === 'true',
+        url: url || ''
+      };
+      await saveProxyConfig(newConfig);
+      res.json({ success: true, config: newConfig });
+    } catch (error) {
+      console.error('Update proxy config error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   // ==========================================================================
@@ -1689,12 +1760,12 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-// ROUTE LOGIN (GET & POST) – LOGO DIPERBESAR, BLUR LEBIH TIPIS
-// ==========================================================================
-app.get('/login', (req, res) => {
-  if (req.isAuthenticated()) return res.redirect('/profile');
-  const error = req.flash('error')[0];
-  const html = `
+  // ROUTE LOGIN
+  // ==========================================================================
+  app.get('/login', (req, res) => {
+    if (req.isAuthenticated()) return res.redirect('/profile');
+    const error = req.flash('error')[0];
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1791,8 +1862,8 @@ errorDiv.style.display = 'block';
 </body>
 </html>
 `;
-  res.send(html);
-});
+    res.send(html);
+  });
 
   app.post('/login', (req, res, next) => {
     passport.authenticate('local', (err, user, info) => {
@@ -1816,14 +1887,14 @@ errorDiv.style.display = 'block';
     })(req, res, next);
   });
 
-// ==========================================================================
-// ROUTE REGISTER (GET) – DENGAN LOGO 200px & BLUR 8px
-// ==========================================================================
-app.get('/register', (req, res) => {
-  if (req.isAuthenticated()) return res.redirect('/profile');
-  const error = req.flash('error')[0];
-  const rateLimitMessage = req.flash('rateLimit')[0];
-  const html = `
+  // ==========================================================================
+  // ROUTE REGISTER
+  // ==========================================================================
+  app.get('/register', (req, res) => {
+    if (req.isAuthenticated()) return res.redirect('/profile');
+    const error = req.flash('error')[0];
+    const rateLimitMessage = req.flash('rateLimit')[0];
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1843,7 +1914,7 @@ app.get('/register', (req, res) => {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0}
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
 .back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(8px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
@@ -1981,25 +2052,21 @@ errorDiv.style.display = 'block';
 </script>
 </body>
 </html>
-  `;
-  res.send(html);
-});
+`;
+    res.send(html);
+  });
 
-  // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
-
     if (await isRegisterBlocked(clientIp)) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
-
     const attempt = await registerAttempt(clientIp);
     if (attempt.blocked) {
       req.flash('error', 'Terlalu banyak percobaan registrasi. Silakan coba lagi setelah 5 menit.');
       return res.redirect('/register');
     }
-
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       req.flash('error', 'Semua field harus diisi');
@@ -2020,14 +2087,10 @@ errorDiv.style.display = 'block';
         return res.redirect('/register');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
-      // Proses createUser (termasuk upload foto) - sudah menunggu selesai
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
-      
-      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
       console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
-      
       req.flash('success', 'Registrasi berhasil, silakan login');
       res.redirect('/login');
     } catch (err) {
@@ -2042,7 +2105,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // GOOGLE OAUTH ROUTES
+  // GOOGLE OAUTH
   // ==========================================================================
   app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
   app.get('/auth/google/callback',
@@ -2053,7 +2116,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST) - LENGKAP
+  // ROUTE PROFILE (GET & POST)
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -2926,7 +2989,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD
+  // ADMIN DASHBOARD (dengan form proxy)
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3400,6 +3463,35 @@ font-size: 0.8rem;
 <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
 <div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
 </div>
+
+<!-- SECTION PROXY CONFIGURATION -->
+<div class="server-status-section" style="margin-top: 20px;">
+  <div class="section-header">
+    <h2><i class="fas fa-network-wired"></i> Proxy Configuration (Outbound)</h2>
+  </div>
+  <div class="status-metrics">
+    <div class="metric-card" style="grid-column: span 2;">
+      <div class="metric-header">
+        <span>Proxy Status</span>
+        <span id="proxyStatusBadge" class="status-badge">Memuat...</span>
+      </div>
+      <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 15px;">
+        <label style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="proxyEnabled"> <span>Aktifkan Proxy</span>
+        </label>
+        <div style="flex: 1; min-width: 250px;">
+          <label>Proxy URL (HTTPS):</label>
+          <input type="text" id="proxyUrl" placeholder="https://user:pass@host:port" style="width: 100%; padding: 8px; border-radius: 20px; background: #1a1f30; border: 1px solid #2a3a60; color: #fff;">
+        </div>
+        <button id="saveProxyBtn" class="action-btn approve-btn" style="background: #2196f3;">Simpan</button>
+      </div>
+      <div style="margin-top: 15px; font-size: 12px; color: #aaa;">
+        <i class="fas fa-info-circle"></i> Proxy akan digunakan untuk semua request ke Mustika Payment API.
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="server-status-section">
 <div class="section-header">
 <h2><i class="fas fa-server"></i> Server Status</h2>
@@ -3662,6 +3754,59 @@ console.error(err);
 alert('Terjadi kesalahan, coba lagi nanti.');
 }
 }
+
+// Proxy Configuration
+let proxyConfig = { enabled: false, url: '' };
+async function loadProxyConfigAdmin() {
+try {
+const res = await fetch('/api/admin/proxy-config');
+const data = await res.json();
+if (data.success) {
+proxyConfig = data.config;
+document.getElementById('proxyEnabled').checked = proxyConfig.enabled;
+document.getElementById('proxyUrl').value = proxyConfig.url || '';
+updateProxyStatusBadge();
+}
+} catch (err) { console.error(err); }
+}
+function updateProxyStatusBadge() {
+const badge = document.getElementById('proxyStatusBadge');
+if (proxyConfig.enabled && proxyConfig.url) {
+badge.innerHTML = '<span style="color:#4caf50;">✓ AKTIF</span>';
+badge.title = proxyConfig.url;
+} else {
+badge.innerHTML = '<span style="color:#f44336;">✗ NONAKTIF</span>';
+}
+}
+document.getElementById('saveProxyBtn')?.addEventListener('click', async () => {
+const enabled = document.getElementById('proxyEnabled').checked;
+const url = document.getElementById('proxyUrl').value.trim();
+const btn = document.getElementById('saveProxyBtn');
+const originalText = btn.innerText;
+btn.innerText = 'Menyimpan...';
+btn.disabled = true;
+try {
+const res = await fetch('/api/admin/proxy-config', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ enabled, url })
+});
+const data = await res.json();
+if (data.success) {
+proxyConfig = data.config;
+updateProxyStatusBadge();
+alert('Konfigurasi proxy berhasil disimpan');
+} else {
+alert('Gagal: ' + data.error);
+}
+} catch (err) {
+alert('Error: ' + err.message);
+} finally {
+btn.innerText = originalText;
+btn.disabled = false;
+}
+});
+loadProxyConfigAdmin();
 </script>
 </body>
 </html>
@@ -3669,26 +3814,26 @@ alert('Terjadi kesalahan, coba lagi nanti.');
     res.send(html);
   });
 
-// ==========================================================================
-// HALAMAN UTAMA (HOME) – BACKGROUND VIDEO, SLIDE-IN ANIMATION
-// ==========================================================================
-app.get('/', async (req, res) => {
-  const isLoggedIn = req.isAuthenticated();
-  const user = isLoggedIn ? req.user : null;
-  const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
-  const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
-  const users = await getUsers();
-  const orders = await getOrders();
-  const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
-  let totalPurchases = 0;
-  if (user) {
-    totalPurchases = orders
-      .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-      .reduce((sum, o) => sum + o.amount, 0);
-  }
-  const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
-  const telegramUsername = (config.DEVELOPER || '').replace('@', '');
-  const html = `
+  // ==========================================================================
+  // HOME
+  // ==========================================================================
+  app.get('/', async (req, res) => {
+    const isLoggedIn = req.isAuthenticated();
+    const user = isLoggedIn ? req.user : null;
+    const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
+    const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
+    const users = await getUsers();
+    const orders = await getOrders();
+    const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
+    let totalPurchases = 0;
+    if (user) {
+      totalPurchases = orders
+        .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
+        .reduce((sum, o) => sum + o.amount, 0);
+    }
+    const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
+    const telegramUsername = (config.DEVELOPER || '').replace('@', '');
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -4402,7 +4547,6 @@ ${isLoggedIn ? `
 </div>
 <script>
 const isLoggedIn = ${isLoggedIn};
-// Tidak ada lagi partikel canvas, background video sudah ada
 const menuBtn = document.getElementById('menuBtn');
 const statusPanel = document.getElementById('statusPanel');
 const pageContainer = document.getElementById('pageContainer');
@@ -4569,8 +4713,8 @@ generatePriceCards();
 </body>
 </html>
 `;
-  res.send(html);
-});
+    res.send(html);
+  });
 
   // ==========================================================================
   // 404 HANDLER
@@ -4607,7 +4751,7 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT)
+// AUTO CANCEL EXPIRED ORDERS
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
@@ -4627,7 +4771,7 @@ async function autoCancelExpiredOrders() {
 setInterval(autoCancelExpiredOrders, 30000);
 
 // ============================================================================
-// INISIALISASI GITHUB DARI URL
+// INISIALISASI GITHUB
 // ============================================================================
 async function initGithub() {
   const tokenConfig = config.GITHUB_TOKEN;
@@ -4656,6 +4800,7 @@ async function initGithub() {
 async function startServer() {
   try {
     await initGithub();
+    await loadProxyConfig(); // Load konfigurasi proxy dari GitHub
     sessionStore = new GitHubSessionStore(octokit, owner, repo, GITHUB_BRANCH, `${GITHUB_PATH}/sessions`);
     app.use(session({
       secret: config.SESSION_SECRET || 'novabot-super-secret-2026',
