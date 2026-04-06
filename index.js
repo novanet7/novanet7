@@ -3129,7 +3129,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
     } catch (e) { console.error('Gagal ambil IP publik:', e); }
     const clientIp = req.ip || req.connection.remoteAddress;
     
-    const html = `
+const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -3140,836 +3140,1065 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 * {
-margin: 0;
-padding: 0;
-box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 body {
-font-family: 'Rajdhani', sans-serif;
-background: radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
-color: #fff;
-min-height: 100vh;
-padding: 20px;
-position: relative;
-overflow-x: hidden;
+  font-family: 'Rajdhani', sans-serif;
+  background: radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+  color: #fff;
+  min-height: 100vh;
+  padding: 20px;
+  position: relative;
+  overflow-x: hidden;
 }
 body::before {
-content: '';
-position: fixed;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
-background-size: cover;
-opacity: 0.2;
-z-index: -2;
-pointer-events: none;
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
+  background-size: cover;
+  opacity: 0.2;
+  z-index: -2;
+  pointer-events: none;
 }
 body::after {
-content: '';
-position: fixed;
-top: 0;
-left: 0;
-width: 100%;
-height: 100%;
-background: rgba(0, 0, 0, 0.65);
-z-index: -1;
-pointer-events: none;
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: -1;
+  pointer-events: none;
 }
 .dashboard-container {
-max-width: 1600px;
-margin: 0 auto;
-position: relative;
-z-index: 1;
+  max-width: 1600px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 .top-bar {
-display: flex;
-justify-content: space-between;
-align-items: center;
-background: rgba(15, 25, 45, 0.6);
-backdrop-filter: blur(12px);
-border-radius: 30px;
-padding: 10px 25px;
-margin-bottom: 30px;
-border: 1px solid rgba(91, 140, 255, 0.3);
-box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 25, 45, 0.6);
+  backdrop-filter: blur(12px);
+  border-radius: 30px;
+  padding: 10px 25px;
+  margin-bottom: 30px;
+  border: 1px solid rgba(91, 140, 255, 0.3);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 .logo-area h1 {
-font-family: 'Orbitron';
-font-size: 1.6rem;
-background: linear-gradient(135deg, #5b8cff, #9b4dff);
--webkit-background-clip: text;
-background-clip: text;
-color: transparent;
-letter-spacing: 1px;
+  font-family: 'Orbitron';
+  font-size: 1.6rem;
+  background: linear-gradient(135deg, #5b8cff, #9b4dff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 1px;
 }
 .logo-area h1 i {
-margin-right: 8px;
-background: none;
-color: #5b8cff;
--webkit-background-clip: unset;
-background-clip: unset;
+  margin-right: 8px;
+  background: none;
+  color: #5b8cff;
+  -webkit-background-clip: unset;
+  background-clip: unset;
 }
 .admin-profile {
-display: flex;
-align-items: center;
-gap: 15px;
-background: rgba(0, 0, 0, 0.4);
-padding: 5px 15px 5px 10px;
-border-radius: 50px;
-border-left: 2px solid #5b8cff;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 5px 15px 5px 10px;
+  border-radius: 50px;
+  border-left: 2px solid #5b8cff;
 }
 .admin-avatar {
-width: 42px;
-height: 42px;
-border-radius: 50%;
-border: 2px solid #5b8cff;
-object-fit: cover;
-background: #1a1f30;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid #5b8cff;
+  object-fit: cover;
+  background: #1a1f30;
 }
 .admin-info {
-text-align: right;
+  text-align: right;
 }
 .admin-name {
-font-weight: bold;
-font-size: 1rem;
-color: #fff;
+  font-weight: bold;
+  font-size: 1rem;
+  color: #fff;
 }
 .admin-role {
-font-size: 0.75rem;
-color: #8a9bb0;
-letter-spacing: 0.5px;
+  font-size: 0.75rem;
+  color: #8a9bb0;
+  letter-spacing: 0.5px;
 }
 .back-link {
-color: #8a9bb0;
-text-decoration: none;
-transition: 0.2s;
-margin-left: 15px;
+  color: #8a9bb0;
+  text-decoration: none;
+  transition: 0.2s;
+  margin-left: 15px;
 }
 .back-link:hover {
-color: #5b8cff;
+  color: #5b8cff;
 }
+
+.section-shell {
+  margin-bottom: 35px;
+}
+
 .stats-grid {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-gap: 20px;
-margin-bottom: 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  margin-bottom: 35px;
 }
 .stat-card {
-background: rgba(15, 25, 45, 0.6);
-backdrop-filter: blur(8px);
-border: 1px solid rgba(91, 140, 255, 0.3);
-border-radius: 24px;
-padding: 20px;
-text-align: center;
-transition: all 0.3s ease;
-position: relative;
-overflow: hidden;
+  background: rgba(15, 25, 45, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(91, 140, 255, 0.3);
+  border-radius: 24px;
+  padding: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 .stat-card::before {
-content: '';
-position: absolute;
-top: 0;
-left: -100%;
-width: 100%;
-height: 100%;
-background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.2), transparent);
-transition: left 0.5s;
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.2), transparent);
+  transition: left 0.5s;
 }
 .stat-card:hover {
-transform: translateY(-5px);
-border-color: #5b8cff;
-box-shadow: 0 10px 25px rgba(91, 140, 255, 0.2);
+  transform: translateY(-5px);
+  border-color: #5b8cff;
+  box-shadow: 0 10px 25px rgba(91, 140, 255, 0.2);
 }
 .stat-card:hover::before {
-left: 100%;
+  left: 100%;
 }
 .stat-card h3 {
-font-size: 0.9rem;
-color: #8a9bb0;
-text-transform: uppercase;
-letter-spacing: 1px;
-margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: #8a9bb0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
 }
 .stat-card .number {
-font-size: 2.5rem;
-font-weight: bold;
-font-family: 'Orbitron';
-color: #ffcc00;
-text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+  font-size: 2.2rem;
+  font-weight: bold;
+  font-family: 'Orbitron';
+  color: #ffcc00;
+  text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+  word-break: break-word;
 }
-.server-status-section {
-background: rgba(15, 25, 45, 0.6);
-backdrop-filter: blur(8px);
-border-radius: 24px;
-padding: 20px;
-margin-bottom: 40px;
-border: 1px solid rgba(91, 140, 255, 0.3);
+
+.server-status-section,
+.settings-section,
+.panel-box {
+  background: rgba(15, 25, 45, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 24px;
+  padding: 22px;
+  border: 1px solid rgba(91, 140, 255, 0.3);
 }
+
 .section-header {
-display: flex;
-justify-content: space-between;
-align-items: baseline;
-margin-bottom: 20px;
-border-bottom: 1px solid rgba(91, 140, 255, 0.3);
-padding-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(91, 140, 255, 0.3);
+  padding-bottom: 10px;
+  gap: 15px;
+  flex-wrap: wrap;
 }
 .section-header h2 {
-font-family: 'Orbitron';
-font-size: 1.4rem;
-color: #5b8cff;
-letter-spacing: 1px;
+  font-family: 'Orbitron';
+  font-size: 1.4rem;
+  color: #5b8cff;
+  letter-spacing: 1px;
 }
 .section-header h2 i {
-margin-right: 8px;
+  margin-right: 8px;
 }
 .last-update {
-font-size: 0.7rem;
-color: #8a9bb0;
+  font-size: 0.7rem;
+  color: #8a9bb0;
 }
+
 .status-metrics {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-gap: 20px;
-margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
 }
 .metric-card {
-background: rgba(0, 0, 0, 0.4);
-border-radius: 20px;
-padding: 15px;
-border-left: 3px solid #5b8cff;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 20px;
+  padding: 15px;
+  border-left: 3px solid #5b8cff;
 }
 .metric-header {
-display: flex;
-justify-content: space-between;
-margin-bottom: 12px;
-font-size: 0.9rem;
-color: #bbb;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: #bbb;
+  gap: 10px;
 }
 .bar-container {
-display: flex;
-align-items: flex-end;
-gap: 6px;
-height: 70px;
-margin: 10px 0;
-padding: 5px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 70px;
+  margin: 10px 0;
+  padding: 5px;
 }
 .bar {
-flex: 1;
-background: linear-gradient(to top, #5b8cff, #9b4dff);
-border-radius: 4px 4px 0 0;
-transition: height 0.3s ease;
+  flex: 1;
+  background: linear-gradient(to top, #5b8cff, #9b4dff);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
 }
 .metric-value {
-text-align: right;
-font-family: monospace;
-font-size: 0.9rem;
-color: #ffcc00;
+  text-align: right;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #ffcc00;
 }
 .info-grid {
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-gap: 15px;
-margin-top: 15px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
 }
 .info-item {
-background: rgba(0, 0, 0, 0.3);
-border-radius: 12px;
-padding: 12px;
-text-align: center;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
 }
 .info-item .label {
-font-size: 0.7rem;
-color: #8a9bb0;
-text-transform: uppercase;
-margin-bottom: 5px;
+  font-size: 0.7rem;
+  color: #8a9bb0;
+  text-transform: uppercase;
+  margin-bottom: 5px;
 }
 .info-item .value {
-font-family: 'Orbitron';
-font-size: 1.1rem;
-font-weight: bold;
-color: #fff;
+  font-family: 'Orbitron';
+  font-size: 1.05rem;
+  font-weight: bold;
+  color: #fff;
+  word-break: break-word;
 }
+
 .section-title {
-font-family: 'Orbitron';
-font-size: 1.4rem;
-color: #5b8cff;
-margin: 30px 0 15px;
-border-left: 4px solid #5b8cff;
-padding-left: 15px;
-display: flex;
-justify-content: space-between;
-align-items: center;
-flex-wrap: wrap;
-gap: 10px;
+  font-family: 'Orbitron';
+  font-size: 1.4rem;
+  color: #5b8cff;
+  margin: 30px 0 15px;
+  border-left: 4px solid #5b8cff;
+  padding-left: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .search-box {
-background: rgba(0, 0, 0, 0.5);
-border: 1px solid #2a3a60;
-border-radius: 30px;
-padding: 5px 15px;
-display: flex;
-align-items: center;
-gap: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #2a3a60;
+  border-radius: 30px;
+  padding: 5px 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .search-box i {
-color: #8a9bb0;
+  color: #8a9bb0;
 }
 .search-box input {
-background: transparent;
-border: none;
-color: #fff;
-padding: 6px 0;
-font-size: 0.9rem;
-outline: none;
-width: 180px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  padding: 6px 0;
+  font-size: 0.9rem;
+  outline: none;
+  width: 180px;
 }
+
 .table-wrapper {
-overflow-x: auto;
-background: rgba(15, 25, 45, 0.6);
-backdrop-filter: blur(8px);
-border-radius: 20px;
-border: 1px solid rgba(91, 140, 255, 0.3);
-margin-bottom: 30px;
+  overflow-x: auto;
+  background: rgba(15, 25, 45, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+  border: 1px solid rgba(91, 140, 255, 0.3);
+  margin-bottom: 30px;
 }
 .table-wrapper.scrollable-table {
-max-height: 500px;
-overflow-y: auto;
+  max-height: 500px;
+  overflow-y: auto;
 }
 table {
-width: 100%;
-border-collapse: collapse;
-font-size: 0.9rem;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
 }
 th, td {
-padding: 12px 15px;
-text-align: left;
-border-bottom: 1px solid rgba(91, 140, 255, 0.2);
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid rgba(91, 140, 255, 0.2);
 }
 th {
-color: #5b8cff;
-font-weight: 600;
-background: rgba(0, 0, 0, 0.3);
-position: sticky;
-top: 0;
-backdrop-filter: blur(4px);
+  color: #5b8cff;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.3);
+  position: sticky;
+  top: 0;
+  backdrop-filter: blur(4px);
 }
 tr:hover {
-background: rgba(91, 140, 255, 0.1);
+  background: rgba(91, 140, 255, 0.1);
 }
 .status-paid { color: #4caf50; font-weight: bold; }
 .status-pending { color: #ff9800; font-weight: bold; }
 .status-cancel, .status-refunded { color: #f44336; font-weight: bold; }
+
 .user-avatar {
-width: 36px;
-height: 36px;
-border-radius: 50%;
-object-fit: cover;
-vertical-align: middle;
-margin-right: 8px;
-border: 1px solid #5b8cff;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+  margin-right: 8px;
+  border: 1px solid #5b8cff;
 }
 .user-bio {
-max-width: 180px;
-white-space: nowrap;
-overflow: hidden;
-text-overflow: ellipsis;
-color: #aaa;
-font-size: 0.8rem;
-}
-.action-btn {
-background: #f44336;
-color: #fff;
-border: none;
-padding: 5px 12px;
-border-radius: 20px;
-cursor: pointer;
-font-size: 0.75rem;
-transition: 0.2s;
-}
-.action-btn:hover {
-background: #d32f2f;
-transform: scale(1.02);
-}
-.action-btn.refund-btn {
-background: #4caf50;
-}
-.action-btn.refund-btn:hover {
-background: #388e3c;
-}
-.action-btn.approve-btn {
-background: #2196f3;
-}
-.action-btn.approve-btn:hover {
-background: #1976d2;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #aaa;
+  font-size: 0.8rem;
 }
 .email-cell {
-max-width: 200px;
-white-space: nowrap;
-overflow-x: auto;
-scrollbar-width: thin;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .refund-request {
-background: rgba(33, 150, 243, 0.15);
+  background: rgba(33, 150, 243, 0.15);
 }
-.footer {
-text-align: center;
-padding: 20px;
-margin-top: 30px;
-border-top: 1px solid #2a3a60;
-color: #8a9bb0;
-font-size: 0.7rem;
+
+.action-btn {
+  background: #f44336;
+  color: #fff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: 0.2s;
+}
+.action-btn:hover {
+  transform: scale(1.02);
+}
+.action-btn.refund-btn {
+  background: #4caf50;
+}
+.action-btn.refund-btn:hover {
+  background: #388e3c;
+}
+.action-btn.approve-btn {
+  background: #2196f3;
+}
+.action-btn.approve-btn:hover {
+  background: #1976d2;
+}
+.action-btn.purple-btn {
+  background: #9c27b0;
+}
+.action-btn.purple-btn:hover {
+  background: #7b1fa2;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 20px;
+  margin-top: 15px;
+}
+.setting-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(91, 140, 255, 0.18);
+  border-radius: 20px;
+  padding: 18px;
+}
+.setting-card h3 {
+  font-family: 'Orbitron';
+  font-size: 1rem;
+  color: #ffcc00;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.proxy-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.proxy-input-group {
+  flex: 1;
+  min-width: 260px;
+}
+.proxy-input-group label,
+.switch-label {
+  display: block;
+  font-size: 0.85rem;
+  color: #8a9bb0;
+  margin-bottom: 8px;
+}
+.proxy-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: #121827;
+  border: 1px solid #2a3a60;
+  color: #fff;
+  outline: none;
+}
+.proxy-input:focus {
+  border-color: #5b8cff;
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.15);
+}
+.toggle-box {
+  min-width: 180px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(91, 140, 255, 0.15);
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+.toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: bold;
+}
+.toggle-inline input[type="checkbox"] {
+  transform: scale(1.2);
+  accent-color: #5b8cff;
+}
+.proxy-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.proxy-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.6;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(91, 140, 255, 0.2);
+  font-size: 0.85rem;
 }
 .server-ip-box {
-margin-top: 20px;
-background: rgba(0, 0, 0, 0.4);
-border-radius: 16px;
-padding: 15px;
-text-align: center;
-border-left: 3px solid #ffcc00;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 18px;
+  padding: 18px;
+  border-left: 3px solid #ffcc00;
+  height: 100%;
 }
 .server-ip-box .label {
-font-size: 0.8rem;
-color: #ffcc00;
-text-transform: uppercase;
-letter-spacing: 1px;
+  font-size: 0.8rem;
+  color: #ffcc00;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
 }
-.server-ip-box .ip {
-font-family: 'Orbitron';
-font-size: 1.2rem;
-font-weight: bold;
-color: #fff;
-margin-top: 5px;
-word-break: break-all;
+.server-ip-box .ip-line {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(91, 140, 255, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.server-ip-box .ip-line .small {
+  font-size: 0.72rem;
+  color: #8a9bb0;
+  margin-bottom: 6px;
+}
+.server-ip-box .ip-line .big {
+  font-family: 'Orbitron';
+  font-size: 0.98rem;
+  font-weight: bold;
+  color: #fff;
+  word-break: break-word;
+}
+
+.footer {
+  text-align: center;
+  padding: 20px;
+  margin-top: 30px;
+  border-top: 1px solid #2a3a60;
+  color: #8a9bb0;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 992px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
 @media (max-width: 768px) {
-.top-bar {
-flex-direction: column;
-gap: 15px;
-text-align: center;
-}
-.admin-profile {
-justify-content: center;
-}
-.stats-grid {
-grid-template-columns: 1fr;
-}
-.section-title {
-flex-direction: column;
-align-items: flex-start;
-}
-.search-box input {
-width: 100%;
-}
-th, td {
-padding: 8px 10px;
-font-size: 0.8rem;
-}
+  .top-bar {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  .admin-profile {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .section-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .search-box input {
+    width: 100%;
+  }
+  th, td {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+  .proxy-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>
 </head>
 <body>
 <div class="dashboard-container">
-<div class="top-bar">
-<div class="logo-area">
-<h1><i class="fas fa-chart-line"></i> ${SITE_NAME} | ADMIN</h1>
-</div>
-<div class="admin-profile">
-<img src="${req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50)}" class="admin-avatar" alt="Admin">
-<div class="admin-info">
-<div class="admin-name">${escapeHTML(req.user.name)}</div>
-<div class="admin-role">Administrator</div>
-</div>
-<a href="/profile" class="back-link"><i class="fas fa-arrow-left"></i> Profil</a>
-</div>
-</div>
-<div class="stats-grid">
-<div class="stat-card"><h3><i class="fas fa-users"></i> Total Pengguna</h3><div class="number">${totalUsers}</div></div>
-<div class="stat-card"><h3><i class="fas fa-shopping-cart"></i> Total Order</h3><div class="number">${totalOrders}</div></div>
-<div class="stat-card"><h3><i class="fas fa-chart-line"></i> Pendapatan</h3><div class="number">Rp ${totalRevenue.toLocaleString('id-ID')}</div></div>
-<div class="stat-card"><h3><i class="fas fa-chart-line"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
-<div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
-</div>
 
-<!-- SECTION PROXY CONFIGURATION -->
-<div class="server-status-section" style="margin-top: 20px;">
-  <div class="section-header">
-    <h2><i class="fas fa-network-wired"></i> Proxy Configuration (Outbound)</h2>
+  <div class="top-bar">
+    <div class="logo-area">
+      <h1><i class="fas fa-chart-line"></i> ${SITE_NAME} | ADMIN</h1>
+    </div>
+    <div class="admin-profile">
+      <img src="${req.user.photo ? `/api/avatar/${req.user.id}` : getGravatarUrl(req.user.email, 50)}" class="admin-avatar" alt="Admin">
+      <div class="admin-info">
+        <div class="admin-name">${escapeHTML(req.user.name)}</div>
+        <div class="admin-role">Administrator</div>
+      </div>
+      <a href="/profile" class="back-link"><i class="fas fa-arrow-left"></i> Profil</a>
+    </div>
   </div>
-  <div class="status-metrics">
-    <div class="metric-card" style="grid-column: span 2;">
-      <div class="metric-header">
-        <span>Proxy Status</span>
-        <span id="proxyStatusBadge" class="status-badge">Memuat...</span>
+
+  <!-- STATUS WEB PALING ATAS -->
+  <div class="section-shell">
+    <div class="server-status-section">
+      <div class="section-header">
+        <h2><i class="fas fa-server"></i> Status Web & Server</h2>
+        <span class="last-update" id="lastUpdateTime">Memuat...</span>
       </div>
-      <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 15px;">
-        <label style="display: flex; align-items: center; gap: 10px;">
-          <input type="checkbox" id="proxyEnabled"> <span>Aktifkan Proxy</span>
-        </label>
-        <div style="flex: 1; min-width: 250px;">
-          <label>Proxy URL (http:// atau https://):</label>
-          <input type="text" id="proxyUrl" placeholder="http://user:pass@host:port atau https://host:port" style="width: 100%; padding: 8px; border-radius: 20px; background: #1a1f30; border: 1px solid #2a3a60; color: #fff;">
+
+      <div class="status-metrics">
+        <div class="metric-card">
+          <div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
+          <div class="bar-container" id="cpuBars"></div>
         </div>
-        <button id="saveProxyBtn" class="action-btn approve-btn" style="background: #2196f3;">Simpan</button>
-        <button id="testProxyBtn" class="action-btn" style="background: #9c27b0;">Test Proxy</button>
+        <div class="metric-card">
+          <div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
+          <div class="bar-container" id="memBars"></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
+          <div class="bar-container" id="netBars"></div>
+        </div>
       </div>
-      <div style="margin-top: 15px; font-size: 12px; color: #aaa;">
-        <i class="fas fa-info-circle"></i> Proxy akan digunakan untuk semua request ke Mustika Payment API.
+
+      <div class="info-grid" id="serverInfoGrid">
+        <div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
+        <div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
+        <div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
+        <div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
       </div>
     </div>
   </div>
+
+  <!-- STATISTIK -->
+  <div class="section-shell">
+    <div class="section-header" style="margin-bottom: 20px;">
+      <h2><i class="fas fa-chart-pie"></i> Ringkasan Sistem</h2>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><h3><i class="fas fa-users"></i> Total Pengguna</h3><div class="number">${totalUsers}</div></div>
+      <div class="stat-card"><h3><i class="fas fa-shopping-cart"></i> Total Order</h3><div class="number">${totalOrders}</div></div>
+      <div class="stat-card"><h3><i class="fas fa-wallet"></i> Pendapatan</h3><div class="number">Rp ${totalRevenue.toLocaleString('id-ID')}</div></div>
+      <div class="stat-card"><h3><i class="fas fa-triangle-exclamation"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
+      <div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
+    </div>
+  </div>
+
+  <!-- VERIF CANCEL -->
+  <div class="section-title">
+    <span><i class="fas fa-clock"></i> Verif Cancel</span>
+    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
+  </div>
+  <div class="table-wrapper scrollable-table">
+    <table id="refundTable">
+      <thead>
+        <tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Diajukan</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        ${refundRequests.map(r => `
+        <tr class="refund-request">
+          <td>${r.order_id}</td>
+          <td class="email-cell" title="${escapeHTML(r.email)}">${escapeHTML(r.email)}</td>
+          <td>${r.panel_type.toUpperCase()}</td>
+          <td>Rp ${r.amount.toLocaleString('id-ID')}</td>
+          <td>${new Date(r.requested_at).toLocaleString('id-ID')}</td>
+          <td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
+        </tr>
+        `).join('')}
+        ${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- USER -->
+  <div class="section-title">
+    <span><i class="fas fa-users"></i> Daftar User</span>
+    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchUser" placeholder="Cari nama/email..."></div>
+  </div>
+  <div class="table-wrapper scrollable-table">
+    <table id="userTable">
+      <thead>
+        <tr><th>ID</th><th>Profil</th><th>Nama</th><th>Email</th><th>Bergabung</th><th>Panel Dibeli</th><th>Pending</th><th>Cancel/Refund</th><th>Bio</th></tr>
+      </thead>
+      <tbody>
+        ${userData.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td><img src="${u.photo}" class="user-avatar" alt="Avatar"></td>
+          <td>${escapeHTML(u.name)}</td>
+          <td class="email-cell" title="${escapeHTML(u.email)}">${escapeHTML(u.email)}</td>
+          <td>${u.joined}</td>
+          <td>${u.purchasedCount}</td>
+          <td>${u.pendingCount}</td>
+          <td>${u.cancelCount}</td>
+          <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
+        </tr>
+        `).join('')}
+        ${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ORDER -->
+  <div class="section-title">
+    <span><i class="fas fa-shopping-cart"></i> Order Terbaru</span>
+    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchOrder" placeholder="Cari order/email..."></div>
+  </div>
+  <div class="table-wrapper scrollable-table">
+    <table id="orderTable">
+      <thead>
+        <tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        ${sortedOrders.slice(0, 100).map(o => {
+          let actionBtn = '';
+          if (o.status === 'pending') {
+            actionBtn = `<button class="action-btn" onclick="cancelOrder('${o.order_id}')">Batalkan</button>`;
+          } else if (o.status === 'paid' || o.status === 'completed') {
+            actionBtn = `<button class="action-btn refund-btn" onclick="refundOrder('${o.order_id}')">Refund (Manual)</button>`;
+          }
+          return `
+          <tr>
+            <td>${o.order_id}</td>
+            <td class="email-cell" title="${escapeHTML(o.email)}">${escapeHTML(o.email)}</td>
+            <td>${o.panel_type.toUpperCase()}</td>
+            <td>Rp ${o.amount.toLocaleString('id-ID')}</td>
+            <td class="status-${o.status === 'paid' || o.status === 'completed' ? 'paid' : (o.status === 'cancel' || o.status === 'refunded' ? 'cancel' : 'pending')}">${o.status}</td>
+            <td>${new Date(o.created_at).toLocaleDateString('id-ID')}</td>
+            <td>${actionBtn}</td>
+          </tr>
+          `;
+        }).join('')}
+        ${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SEMUA PENGATURAN WEB DI BAWAH -->
+  <div class="section-shell" style="margin-top: 40px;">
+    <div class="settings-section">
+      <div class="section-header">
+        <h2><i class="fas fa-sliders-h"></i> Pengaturan Web</h2>
+        <span class="status-pill"><i class="fas fa-shield-halved"></i> Konfigurasi Admin</span>
+      </div>
+
+      <div class="settings-grid">
+
+        <!-- PROXY SETTING -->
+        <div class="setting-card">
+          <h3><i class="fas fa-network-wired"></i> Proxy Configuration (Outbound)</h3>
+
+          <div class="proxy-row">
+            <div class="toggle-box">
+              <div class="switch-label">Status Proxy</div>
+              <label class="toggle-inline">
+                <input type="checkbox" id="proxyEnabled">
+                <span>Aktifkan Proxy</span>
+              </label>
+            </div>
+
+            <div class="proxy-input-group">
+              <label>Proxy URL (http:// atau https://)</label>
+              <input type="text" id="proxyUrl" class="proxy-input" placeholder="http://user:pass@host:port atau https://host:port">
+            </div>
+          </div>
+
+          <div class="proxy-actions">
+            <button id="saveProxyBtn" class="action-btn approve-btn">Simpan</button>
+            <button id="testProxyBtn" class="action-btn purple-btn">Test Proxy</button>
+            <div id="proxyStatusBadge" class="status-pill">Memuat...</div>
+          </div>
+
+          <div class="proxy-note">
+            <i class="fas fa-info-circle"></i>
+            Proxy akan digunakan untuk semua request ke Mustika Payment API.
+          </div>
+        </div>
+
+        <!-- INFO SERVER / PROXY -->
+        <div class="setting-card">
+          <h3><i class="fas fa-globe"></i> Info Proxy & Server</h3>
+
+          <div class="server-ip-box">
+            <div class="label">SERVER NETWORK INFORMATION</div>
+
+            <div class="ip-line">
+              <div class="small">Public IP</div>
+              <div class="big">${serverPublicIp}</div>
+            </div>
+
+            <div class="ip-line">
+              <div class="small">Request / Local IP</div>
+              <div class="big">${clientIp}</div>
+            </div>
+
+            <div class="ip-line">
+              <div class="small">Proxy Mode</div>
+              <div class="big" id="proxyModeText">Checking...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>© 2026 ${SITE_NAME} Admin Panel • ${config.DEVELOPER} • v${config.VERSI_WEB}</p>
+  </div>
+
 </div>
 
-<div class="server-status-section">
-<div class="section-header">
-<h2><i class="fas fa-server"></i> Server Status</h2>
-<span class="last-update" id="lastUpdateTime">Memuat...</span>
-</div>
-<div class="status-metrics">
-<div class="metric-card">
-<div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
-<div class="bar-container" id="cpuBars"></div>
-</div>
-<div class="metric-card">
-<div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
-<div class="bar-container" id="memBars"></div>
-</div>
-<div class="metric-card">
-<div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
-<div class="bar-container" id="netBars"></div>
-</div>
-</div>
-<div class="info-grid" id="serverInfoGrid">
-<div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
-<div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
-<div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
-<div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
-</div>
-</div>
-<div class="section-title">
-<span><i class="fas fa-clock"></i> Verif cancel</span>
-<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
-</div>
-<div class="table-wrapper scrollable-table">
-<table id="refundTable">
-<thead>
-<tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Diajukan</th><th>Aksi</th></tr>
-</thead>
-<tbody>
-${refundRequests.map(r => `
-<tr class="refund-request">
-<td>${r.order_id}</td>
-<td class="email-cell" title="${escapeHTML(r.email)}">${escapeHTML(r.email)}</td>
-<td>${r.panel_type.toUpperCase()}</td>
-<td>Rp ${r.amount.toLocaleString('id-ID')}</td>
-<td>${new Date(r.requested_at).toLocaleString('id-ID')}</td>
-<td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
-</tr>
-`).join('')}
-${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td>' : ''}
-</tbody>
-</table>
-</div>
-<div class="section-title">
-<span><i class="fas fa-users"></i> Daftar User</span>
-<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchUser" placeholder="Cari nama/email..."></div>
-</div>
-<div class="table-wrapper scrollable-table">
-<table id="userTable">
-<thead>
-<tr><th>ID</th><th>Profil</th><th>Nama</th><th>Email</th><th>Bergabung</th><th>Panel Dibeli</th><th>Pending</th><th>Cancel/Refund</th><th>Bio</th></tr>
-</thead>
-<tbody>
-${userData.map(u => `
-<tr>
-<td>${u.id}</td>
-<td><img src="${u.photo}" class="user-avatar" alt="Avatar"></td>
-<td>${escapeHTML(u.name)}</td>
-<td class="email-cell" title="${escapeHTML(u.email)}">${escapeHTML(u.email)}</td>
-<td>${u.joined}</td>
-<td>${u.purchasedCount}</td>
-<td>${u.pendingCount}</td>
-<td>${u.cancelCount}</td>
-<td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
-</tr>
-`).join('')}
-${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td>' : ''}
-</tbody>
-</table>
-</div>
-<div class="section-title">
-<span><i class="fas fa-shopping-cart"></i> Order Terbaru</span>
-<div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchOrder" placeholder="Cari order/email..."></div>
-</div>
-<div class="table-wrapper scrollable-table">
-<table id="orderTable">
-<thead>
-<tr><th>Order ID</th><th>Email</th><th>Paket</th><th>Jumlah</th><th>Status</th><th>Tanggal</th><th>Aksi</th></tr>
-</thead>
-<tbody>
-${sortedOrders.slice(0, 100).map(o => {
-let actionBtn = '';
-if (o.status === 'pending') {
-actionBtn = `<button class="action-btn" onclick="cancelOrder('${o.order_id}')">Batalkan</button>`;
-} else if (o.status === 'paid' || o.status === 'completed') {
-actionBtn = `<button class="action-btn refund-btn" onclick="refundOrder('${o.order_id}')">Refund (Manual)</button>`;
-}
-return `
-<tr>
-<td>${o.order_id}</td>
-<td class="email-cell" title="${escapeHTML(o.email)}">${escapeHTML(o.email)}</td>
-<td>${o.panel_type.toUpperCase()}</td>
-<td>Rp ${o.amount.toLocaleString('id-ID')}</td>
-<td class="status-${o.status === 'paid' || o.status === 'completed' ? 'paid' : (o.status === 'cancel' || o.status === 'refunded' ? 'cancel' : 'pending')}">${o.status}</td>
-<td>${new Date(o.created_at).toLocaleDateString('id-ID')}</td>
-<td>${actionBtn}</td>
-</tr>
-`;
-}).join('')}
-${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td>' : ''}
-</tbody>
-</table>
-</div>
-
-<!-- Server IP Information (paling bawah) -->
-<div class="server-ip-box">
-  <div class="label"><i class="fas fa-globe"></i> SERVER IP INFORMATION</div>
-  <div class="ip">🌐 Public IP: ${serverPublicIp}</div>
-  <div class="ip">🖥️ Local IP (req): ${clientIp}</div>
-</div>
-
-<div class="footer">
-<p>© 2026 ${SITE_NAME} Admin Panel • ${config.DEVELOPER} • v${config.VERSI_WEB}</p>
-</div>
-</div>
 <script>
 function initBars(containerId, barCount = 20) {
-const container = document.getElementById(containerId);
-if (!container) return [];
-container.innerHTML = '';
-for (let i = 0; i < barCount; i++) {
-const bar = document.createElement('div');
-bar.className = 'bar';
-bar.style.height = '5px';
-container.appendChild(bar);
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  container.innerHTML = '';
+  for (let i = 0; i < barCount; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = '5px';
+    container.appendChild(bar);
+  }
+  return Array.from(container.children);
 }
-return Array.from(container.children);
-}
+
 function getColorForHeight(height, maxHeight) {
-const ratio = Math.min(1, Math.max(0, height / maxHeight));
-const hue = 120 * (1 - ratio);
-return 'hsl(' + hue + ', 100%, 60%)';
+  const ratio = Math.min(1, Math.max(0, height / maxHeight));
+  const hue = 120 * (1 - ratio);
+  return 'hsl(' + hue + ', 100%, 60%)';
 }
+
 function updateBars(bars, basePercent) {
-if (!bars || bars.length === 0) return;
-const maxHeight = 70;
-bars.forEach((bar, idx) => {
-let randomFactor = (Math.random() - 0.5) * 0.3;
-let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
-let height = (percent / 100) * maxHeight;
-bar.style.height = height + 'px';
-bar.style.background = getColorForHeight(height, maxHeight);
-});
+  if (!bars || bars.length === 0) return;
+  const maxHeight = 70;
+  bars.forEach((bar) => {
+    let randomFactor = (Math.random() - 0.5) * 0.3;
+    let percent = Math.min(100, Math.max(0, basePercent * (1 + randomFactor)));
+    let height = (percent / 100) * maxHeight;
+    bar.style.height = height + 'px';
+    bar.style.background = getColorForHeight(height, maxHeight);
+  });
 }
+
 const cpuBars = initBars('cpuBars', 20);
 const memBars = initBars('memBars', 20);
 const netBars = initBars('netBars', 20);
+
 function updateMetrics() {
-const cpu = (Math.random() * 40).toFixed(1);
-const mem = Math.floor(Math.random() * 500);
-const net = Math.floor(Math.random() * 800);
-document.getElementById('cpuValue').innerText = cpu + '%';
-document.getElementById('memValue').innerText = mem + ' MiB';
-document.getElementById('netValue').innerText = net + ' B/s';
-updateBars(cpuBars, parseFloat(cpu));
-updateBars(memBars, (mem / 500) * 100);
-updateBars(netBars, (net / 1000) * 100);
+  const cpu = (Math.random() * 40).toFixed(1);
+  const mem = Math.floor(Math.random() * 500);
+  const net = Math.floor(Math.random() * 800);
+
+  document.getElementById('cpuValue').innerText = cpu + '%';
+  document.getElementById('memValue').innerText = mem + ' MiB';
+  document.getElementById('netValue').innerText = net + ' B/s';
+
+  updateBars(cpuBars, parseFloat(cpu));
+  updateBars(memBars, (mem / 500) * 100);
+  updateBars(netBars, (net / 1000) * 100);
 }
+
 async function fetchServerStatus() {
-try {
-const res = await fetch('/api/status');
-const data = await res.json();
-document.getElementById('serverVersion').innerText = data.version;
-document.getElementById('serverDev').innerText = data.developer;
-const uptime = formatUptime(data.uptime);
-document.getElementById('serverUptime').innerText = uptime;
-document.getElementById('serverTime').innerText = new Date(data.timestamp).toLocaleTimeString('id-ID');
-document.getElementById('lastUpdateTime').innerText = 'Diperbarui: ' + new Date().toLocaleTimeString('id-ID');
-} catch (e) {
-document.getElementById('serverVersion').innerText = 'Error';
-document.getElementById('serverDev').innerText = 'Error';
-document.getElementById('serverUptime').innerText = 'Error';
-document.getElementById('serverTime').innerText = 'Error';
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+
+    document.getElementById('serverVersion').innerText = data.version;
+    document.getElementById('serverDev').innerText = data.developer;
+    document.getElementById('serverUptime').innerText = formatUptime(data.uptime);
+    document.getElementById('serverTime').innerText = new Date(data.timestamp).toLocaleTimeString('id-ID');
+    document.getElementById('lastUpdateTime').innerText = 'Diperbarui: ' + new Date().toLocaleTimeString('id-ID');
+  } catch (e) {
+    document.getElementById('serverVersion').innerText = 'Error';
+    document.getElementById('serverDev').innerText = 'Error';
+    document.getElementById('serverUptime').innerText = 'Error';
+    document.getElementById('serverTime').innerText = 'Error';
+  }
 }
-}
+
 function formatUptime(seconds) {
-const d = Math.floor(seconds / 86400);
-const h = Math.floor((seconds % 86400) / 3600);
-const m = Math.floor((seconds % 3600) / 60);
-const s = Math.floor(seconds % 60);
-return d + 'd ' + h + 'h ' + m + 'm ' + s + 's';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return d + 'd ' + h + 'h ' + m + 'm ' + s + 's';
 }
+
 setInterval(() => {
-updateMetrics();
-fetchServerStatus();
+  updateMetrics();
+  fetchServerStatus();
 }, 5000);
+
 updateMetrics();
 fetchServerStatus();
+
 function filterTable(inputId, tableId) {
-const input = document.getElementById(inputId);
-if (!input) return;
-input.addEventListener('keyup', function() {
-const filter = this.value.toLowerCase();
-const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
-rows.forEach(row => {
-const text = row.innerText.toLowerCase();
-row.style.display = text.includes(filter) ? '' : 'none';
-});
-});
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.addEventListener('keyup', function() {
+    const filter = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
+    rows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      row.style.display = text.includes(filter) ? '' : 'none';
+    });
+  });
 }
+
 filterTable('searchRefund', 'refundTable');
 filterTable('searchUser', 'userTable');
 filterTable('searchOrder', 'orderTable');
+
 async function cancelOrder(orderId) {
-if (!confirm('Yakin ingin membatalkan order pending ini? Dana akan dikembalikan ke user.')) return;
-try {
-const res = await fetch('/api/cancel-order', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ order_id: orderId })
-});
-const data = await res.json();
-if (data.success) {
-alert('Order berhasil dibatalkan');
-location.reload();
-} else {
-alert('Gagal: ' + (data.message || 'Unknown error'));
+  if (!confirm('Yakin ingin membatalkan order pending ini? Dana akan dikembalikan ke user.')) return;
+  try {
+    const res = await fetch('/api/cancel-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Order berhasil dibatalkan');
+      location.reload();
+    } else {
+      alert('Gagal: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Terjadi kesalahan, coba lagi nanti.');
+  }
 }
-} catch (err) {
-console.error(err);
-alert('Terjadi kesalahan, coba lagi nanti.');
-}
-}
+
 async function refundOrder(orderId) {
-if (!confirm('Yakin ingin melakukan refund untuk order ini? Dana harus dikembalikan secara manual di dashboard Pakasir, dan server akan dinonaktifkan.')) return;
-try {
-const res = await fetch('/api/approve-refund', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ order_id: orderId })
-});
-const data = await res.json();
-if (data.success) {
-alert('Refund berhasil diproses');
-location.reload();
-} else {
-alert('Gagal: ' + (data.message || 'Unknown error'));
+  if (!confirm('Yakin ingin melakukan refund untuk order ini? Dana harus dikembalikan secara manual di dashboard Pakasir, dan server akan dinonaktifkan.')) return;
+  try {
+    const res = await fetch('/api/approve-refund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Refund berhasil diproses');
+      location.reload();
+    } else {
+      alert('Gagal: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Terjadi kesalahan, coba lagi nanti.');
+  }
 }
-} catch (err) {
-console.error(err);
-alert('Terjadi kesalahan, coba lagi nanti.');
-}
-}
+
 async function approveRefund(orderId) {
-if (!confirm('Setujui refund untuk order ini? Server akan dihapus dan status order akan diubah menjadi refunded. Dana harus dikembalikan secara manual di dashboard Pakasir.')) return;
-try {
-const res = await fetch('/api/approve-refund', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ order_id: orderId })
-});
-const data = await res.json();
-if (data.success) {
-alert('Refund berhasil disetujui dan diproses');
-location.reload();
-} else {
-alert('Gagal: ' + (data.message || 'Unknown error'));
-}
-} catch (err) {
-console.error(err);
-alert('Terjadi kesalahan, coba lagi nanti.');
-}
+  if (!confirm('Setujui refund untuk order ini? Server akan dihapus dan status order akan diubah menjadi refunded. Dana harus dikembalikan secara manual di dashboard Pakasir.')) return;
+  try {
+    const res = await fetch('/api/approve-refund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Refund berhasil disetujui dan diproses');
+      location.reload();
+    } else {
+      alert('Gagal: ' + (data.message || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Terjadi kesalahan, coba lagi nanti.');
+  }
 }
 
 // Proxy Configuration
 let proxyConfig = { enabled: false, url: '' };
+
 async function loadProxyConfigAdmin() {
-try {
-const res = await fetch('/api/admin/proxy-config');
-const data = await res.json();
-if (data.success) {
-proxyConfig = data.config;
-document.getElementById('proxyEnabled').checked = proxyConfig.enabled;
-document.getElementById('proxyUrl').value = proxyConfig.url || '';
-updateProxyStatusBadge();
+  try {
+    const res = await fetch('/api/admin/proxy-config');
+    const data = await res.json();
+    if (data.success) {
+      proxyConfig = data.config;
+      document.getElementById('proxyEnabled').checked = proxyConfig.enabled;
+      document.getElementById('proxyUrl').value = proxyConfig.url || '';
+      updateProxyStatusBadge();
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
-} catch (err) { console.error(err); }
-}
+
 function updateProxyStatusBadge() {
-const badge = document.getElementById('proxyStatusBadge');
-if (proxyConfig.enabled && proxyConfig.url) {
-badge.innerHTML = '<span style="color:#4caf50;">✓ AKTIF</span>';
-badge.title = proxyConfig.url;
-} else {
-badge.innerHTML = '<span style="color:#f44336;">✗ NONAKTIF</span>';
+  const badge = document.getElementById('proxyStatusBadge');
+  const modeText = document.getElementById('proxyModeText');
+
+  if (proxyConfig.enabled && proxyConfig.url) {
+    badge.innerHTML = '<span style="color:#4caf50;">✓ AKTIF</span>';
+    badge.title = proxyConfig.url;
+    if (modeText) modeText.innerText = 'Enabled';
+  } else {
+    badge.innerHTML = '<span style="color:#f44336;">✗ NONAKTIF</span>';
+    if (modeText) modeText.innerText = 'Disabled';
+  }
 }
-}
+
 document.getElementById('saveProxyBtn')?.addEventListener('click', async () => {
-const enabled = document.getElementById('proxyEnabled').checked;
-const url = document.getElementById('proxyUrl').value.trim();
-const btn = document.getElementById('saveProxyBtn');
-const originalText = btn.innerText;
-btn.innerText = 'Menyimpan...';
-btn.disabled = true;
-try {
-const res = await fetch('/api/admin/proxy-config', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ enabled, url })
+  const enabled = document.getElementById('proxyEnabled').checked;
+  const url = document.getElementById('proxyUrl').value.trim();
+  const btn = document.getElementById('saveProxyBtn');
+  const originalText = btn.innerText;
+
+  btn.innerText = 'Menyimpan...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/admin/proxy-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, url })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      proxyConfig = data.config;
+      updateProxyStatusBadge();
+      alert('Konfigurasi proxy berhasil disimpan');
+    } else {
+      alert('Gagal: ' + data.error);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }
 });
-const data = await res.json();
-if (data.success) {
-proxyConfig = data.config;
-updateProxyStatusBadge();
-alert('Konfigurasi proxy berhasil disimpan');
-} else {
-alert('Gagal: ' + data.error);
-}
-} catch (err) {
-alert('Error: ' + err.message);
-} finally {
-btn.innerText = originalText;
-btn.disabled = false;
-}
-});
-// Test Proxy
+
 document.getElementById('testProxyBtn')?.addEventListener('click', async () => {
-const enabled = document.getElementById('proxyEnabled').checked;
-const url = document.getElementById('proxyUrl').value.trim();
-const btn = document.getElementById('testProxyBtn');
-const originalText = btn.innerText;
-btn.innerText = '⏳ Testing...';
-btn.disabled = true;
-try {
-const res = await fetch('/api/admin/test-proxy', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ enabled, url })
+  const enabled = document.getElementById('proxyEnabled').checked;
+  const url = document.getElementById('proxyUrl').value.trim();
+  const btn = document.getElementById('testProxyBtn');
+  const originalText = btn.innerText;
+
+  btn.innerText = 'Testing...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/admin/test-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, url })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert(
+        'Proxy berhasil!\\n' +
+        'IP keluar: ' + data.ip + '\\n' +
+        'Latency: ' + data.latency + '\\n' +
+        data.message
+      );
+    } else {
+      alert('Proxy gagal: ' + data.message);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }
 });
-const data = await res.json();
-if (data.success) {
-alert(`✅ Proxy berhasil!\nIP keluar: ${data.ip}\nLatency: ${data.latency}\n${data.message}`);
-} else {
-alert(`❌ Proxy gagal: ${data.message}`);
-}
-} catch (err) {
-alert('Error: ' + err.message);
-} finally {
-btn.innerText = originalText;
-btn.disabled = false;
-}
-});
+
 loadProxyConfigAdmin();
 </script>
 </body>
