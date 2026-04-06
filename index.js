@@ -29,7 +29,7 @@ if (!MUSTIKA_API_KEY) {
   process.exit(1);
 }
 const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
-const PROXY_URL = 'https://noble:fp_cbe32996e0ce98e9@p-a210365e.noble-ip.com:3129';
+const PROXY_URL = 'https://noble:fp_64ce469a7ca96b5f@p-a04a9564.noble-ip.com:3129';
 const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
