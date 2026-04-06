@@ -896,7 +896,7 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI MUSTIKA PAYMENT
+// FUNGSI MUSTIKA PAYMENT (QRIS)
 // ============================================================================
 async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
   const apiUrl = 'https://mustikapayment.com/api/createpay';
@@ -914,21 +914,18 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: params.toString(),
-      agent: proxyAgent   // pastikan proxyAgent sudah didefinisikan
+      agent: proxyAgent
     });
 
-    // Cek status HTTP
     if (!response.ok) {
       const text = await response.text();
       console.error('HTTP Error:', response.status, text);
       throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
     }
 
-    // Baca response sebagai text dulu untuk debugging
     const rawText = await response.text();
     console.log('Raw response:', rawText);
 
-    // Coba parse JSON
     let data;
     try {
       data = JSON.parse(rawText);
@@ -951,6 +948,61 @@ async function createMustikaPayment(amount, redirect_url, customer_name, product
     console.error('Create Mustika Payment error:', error);
     return { success: false, error: error.message };
   }
+}
+
+// ============================================================================
+// FUNGSI UMUM MUSTIKA API (saldo, validasi, withdraw, cek status)
+// ============================================================================
+async function callMustikaApi(endpoint, method = 'GET', params = null) {
+  const url = `https://mustikapayment.com${endpoint}`;
+  const options = {
+    method,
+    headers: {
+      'X-Api-Key': MUSTIKA_API_KEY,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    agent: proxyAgent
+  };
+  if (params && (method === 'POST' || method === 'GET')) {
+    const searchParams = new URLSearchParams(params);
+    if (method === 'POST') {
+      options.body = searchParams.toString();
+    } else {
+      options.url = `${url}?${searchParams.toString()}`;
+    }
+  }
+  try {
+    const response = await fetch(method === 'GET' ? (options.url || url) : url, options);
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); } catch(e) { throw new Error(`Invalid JSON: ${raw.substring(0,200)}`); }
+    return data;
+  } catch (error) {
+    console.error(`Mustika API error (${endpoint}):`, error);
+    throw error;
+  }
+}
+
+async function getMustikaBalance() {
+  return await callMustikaApi('/api/saldo', 'GET');
+}
+
+async function validateBankAccount(tipe, kode, rek) {
+  return await callMustikaApi('/api/validate-bank', 'GET', { tipe, kode, rek });
+}
+
+async function requestWithdrawal(tipe, kode, rek, amount, otp = null) {
+  const params = { tipe, kode, rek, amount };
+  if (otp) params.otp = otp;
+  return await callMustikaApi('/api/wd', 'POST', params);
+}
+
+async function checkWithdrawalStatus(refNo) {
+  return await callMustikaApi('/api/cekwd', 'GET', { ref_no: refNo });
+}
+
+async function checkPaymentStatus(refNo) {
+  return await callMustikaApi('/api/cekpay', 'GET', { ref_no: refNo });
 }
 
 // ============================================================================
@@ -1049,7 +1101,6 @@ Crawl-delay: 1
       const orderId = generateOrderId();
       const redirectUrl = `${config.URL}/payment-callback`;
       
-      // Panggil API Mustika Payment
       const mustikaRes = await createMustikaPayment(amount, redirectUrl, email, `${panelType.toUpperCase()} Panel`);
       if (!mustikaRes.success) {
         return res.status(500).json({ success: false, message: mustikaRes.error || 'Gagal membuat transaksi pembayaran' });
@@ -1063,7 +1114,7 @@ Crawl-delay: 1
         status: 'pending',
         created_at: new Date().toISOString(),
         panel_created: false,
-        ref_no: mustikaRes.ref_no  // simpan ref_no dari Mustika
+        ref_no: mustikaRes.ref_no
       };
       await addOrder(order);
       
@@ -1075,8 +1126,7 @@ Crawl-delay: 1
     }
   });
 
-  // Endpoint check-payment tidak lagi digunakan karena kita mengandalkan callback.
-  // Namun tetap ada untuk kompatibilitas (selalu mengembalikan status pending)
+  // Endpoint check-payment (kompatibilitas)
   app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
     res.json({ success: true, status: 'pending', message: 'Gunakan callback untuk konfirmasi pembayaran' });
   });
@@ -1126,32 +1176,31 @@ Crawl-delay: 1
   // PAYMENT CALLBACK (MENERIMA POST & GET)
   // ==========================================================================
   app.post('/payment-callback', async (req, res) => {
-    // Proses callback dari Mustika (biasanya POST)
-    // Data yang dikirim tidak diketahui, asumsikan ada ref_no
-    const { ref_no, status, order_id } = req.body;
-    if (!ref_no && !order_id) {
+    const { ref_no, status, order_id, reference } = req.body;
+    const usedRef = ref_no || reference;
+    if (!usedRef && !order_id) {
       return res.status(400).send('Missing ref_no or order_id');
     }
-    // Cari order berdasarkan ref_no
     let order = null;
-    if (ref_no) {
+    if (usedRef) {
       const orders = await getOrders();
-      order = orders.find(o => o.ref_no === ref_no);
+      order = orders.find(o => o.ref_no === usedRef);
     } else if (order_id) {
       order = await findOrderById(order_id);
     }
     if (!order) {
       return res.status(404).send('Order tidak ditemukan');
     }
-    // Jika sudah diproses, langsung sukses
     if (order.panel_created) {
       return res.redirect(`/profile?order=${order.order_id}`);
     }
-    // Proses pembuatan panel
+    // Pastikan status sukses dari Mustika (jika dikirim)
+    if (status && status !== 'success') {
+      return res.status(400).send('Payment not success');
+    }
     await processSuccessfulPayment(order, res);
   });
 
-  // Endpoint GET untuk kompatibilitas (jika Mustika redirect dengan GET)
   app.get('/payment-callback', async (req, res) => {
     const { ref_no, order_id, status } = req.query;
     if (!ref_no && !order_id) {
@@ -1173,13 +1222,10 @@ Crawl-delay: 1
     await processSuccessfulPayment(order, res);
   });
 
-  // Fungsi bersama untuk memproses pembayaran sukses
   async function processSuccessfulPayment(order, res) {
     try {
-      // Update status order menjadi paid
       await updateOrder(order.order_id, { status: 'paid' });
       
-      // Buat panel
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
       const user = await findUserByEmail(order.email);
@@ -1246,7 +1292,6 @@ Crawl-delay: 1
         });
       } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       
-      // Tampilkan halaman sukses
       const updatedOrder = await findOrderById(order.order_id);
       const panel = updatedOrder.panel_data;
       const userCred = updatedOrder.user_data;
@@ -1564,7 +1609,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   }
 
   // ==========================================================================
-  // API REFUND ORDER (DIUBAH)
+  // API REFUND ORDER
   // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
@@ -1573,7 +1618,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       
-      // Untuk pending: hapus order dari database (tanpa API eksternal)
       if (order.status === 'pending') {
         const activeOrders = await getOrders();
         const newActive = activeOrders.filter(o => o.order_id !== order_id);
@@ -1584,7 +1628,6 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
         return res.json({ success: true, message: 'Order berhasil dibatalkan' });
       }
       
-      // Untuk paid: buat refund request (admin harus proses manual di Mustika)
       if (order.status === 'paid' || order.status === 'completed') {
         const isAdminUser = req.user.email === config.ADMIN_EMAIL;
         const paymentTime = new Date(order.created_at).getTime();
@@ -1606,7 +1649,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API APPROVE REFUND (ADMIN) - SAMA SEPERTI SEBELUMNYA
+  // API APPROVE REFUND (ADMIN)
   // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1708,12 +1751,12 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-// ROUTE LOGIN (GET & POST) – LOGO DIPERBESAR, BLUR LEBIH TIPIS
-// ==========================================================================
-app.get('/login', (req, res) => {
-  if (req.isAuthenticated()) return res.redirect('/profile');
-  const error = req.flash('error')[0];
-  const html = `
+  // ROUTE LOGIN (GET & POST)
+  // ==========================================================================
+  app.get('/login', (req, res) => {
+    if (req.isAuthenticated()) return res.redirect('/profile');
+    const error = req.flash('error')[0];
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1810,8 +1853,8 @@ errorDiv.style.display = 'block';
 </body>
 </html>
 `;
-  res.send(html);
-});
+    res.send(html);
+  });
 
   app.post('/login', (req, res, next) => {
     passport.authenticate('local', (err, user, info) => {
@@ -1835,14 +1878,14 @@ errorDiv.style.display = 'block';
     })(req, res, next);
   });
 
-// ==========================================================================
-// ROUTE REGISTER (GET) – DENGAN LOGO 200px & BLUR 8px
-// ==========================================================================
-app.get('/register', (req, res) => {
-  if (req.isAuthenticated()) return res.redirect('/profile');
-  const error = req.flash('error')[0];
-  const rateLimitMessage = req.flash('rateLimit')[0];
-  const html = `
+  // ==========================================================================
+  // ROUTE REGISTER (GET & POST)
+  // ==========================================================================
+  app.get('/register', (req, res) => {
+    if (req.isAuthenticated()) return res.redirect('/profile');
+    const error = req.flash('error')[0];
+    const rateLimitMessage = req.flash('rateLimit')[0];
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -1862,7 +1905,7 @@ app.get('/register', (req, res) => {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Rajdhani',sans-serif}
 body{background:url('https://files.catbox.moe/e6ickj.jpg') no-repeat center center fixed;background-size:cover;display:flex;justify-content:center;align-items:center;min-height:100vh;color:#fff;position:relative;padding:20px}
-body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0} /* overlay lebih terang */
+body::before{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);z-index:0}
 .back-home{position:absolute;top:20px;left:20px;z-index:2}
 .back-home a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:16px;background:rgba(15,19,32,0.5);backdrop-filter:blur(8px);padding:8px 18px;border-radius:40px;border:1px solid #2a3a60;transition:0.3s}
 .back-home a:hover{background:#5b8cff;color:#000;border-color:#5b8cff}
@@ -2000,11 +2043,10 @@ errorDiv.style.display = 'block';
 </script>
 </body>
 </html>
-  `;
-  res.send(html);
-});
+    `;
+    res.send(html);
+  });
 
-  // POST REGISTER DENGAN JEDA 5 DETIK
   app.post('/register', async (req, res) => {
     const clientIp = req.ip || req.connection.remoteAddress;
 
@@ -2039,11 +2081,9 @@ errorDiv.style.display = 'block';
         return res.redirect('/register');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
-      // Proses createUser (termasuk upload foto) - sudah menunggu selesai
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
       
-      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
       console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
       
@@ -2072,7 +2112,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST) - LENGKAP
+  // ROUTE PROFILE (GET & POST)
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -2945,7 +2985,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD
+  // ADMIN DASHBOARD (DENGAN FITUR MUSTIKA)
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3419,32 +3459,59 @@ font-size: 0.8rem;
 <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
 <div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
 </div>
+
+<!-- MUSTIKA BALANCE & WITHDRAWAL SECTION -->
 <div class="server-status-section">
 <div class="section-header">
-<h2><i class="fas fa-server"></i> Server Status</h2>
-<span class="last-update" id="lastUpdateTime">Memuat...</span>
+<h2><i class="fas fa-wallet"></i> MustikaPay Balance</h2>
+<button id="refreshBalanceBtn" class="action-btn" style="background:#2a5298;">Refresh</button>
 </div>
-<div class="status-metrics">
+<div id="mustikaBalance" style="display: flex; gap: 20px; justify-content: center;">
+<div class="stat-card"><h3>Available</h3><div class="number" id="balanceAvailable">-</div></div>
+<div class="stat-card"><h3>Pending</h3><div class="number" id="balancePending">-</div></div>
+</div>
+</div>
+<div class="server-status-section">
+<div class="section-header">
+<h2><i class="fas fa-exchange-alt"></i> Withdrawal / Validasi</h2>
+</div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
 <div class="metric-card">
-<div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
-<div class="bar-container" id="cpuBars"></div>
+<h3>Validasi Rekening</h3>
+<select id="valTipe"><option value="bank">Bank</option><option value="ewallet">E-Wallet</option></select>
+<input type="text" id="valKode" placeholder="Kode bank (014) / ewallet (dana,gopay)" style="width:100%; margin:8px 0;">
+<input type="text" id="valRek" placeholder="Nomor rekening / HP">
+<button id="validateBtn" class="action-btn" style="margin-top:10px;">Validasi</button>
+<div id="valResult" style="margin-top:10px; font-size:0.8rem;"></div>
 </div>
 <div class="metric-card">
-<div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
-<div class="bar-container" id="memBars"></div>
+<h3>Penarikan Dana</h3>
+<select id="wdTipe"><option value="bank">Bank</option><option value="ewallet">E-Wallet</option></select>
+<input type="text" id="wdKode" placeholder="Kode bank / ewallet" style="width:100%; margin:8px 0;">
+<input type="text" id="wdRek" placeholder="Nomor rekening / HP">
+<input type="number" id="wdAmount" placeholder="Jumlah (min 10k)">
+<button id="wdStep1Btn" class="action-btn" style="margin-top:10px;">Request WD (Step 1)</button>
+<div id="wdOtpGroup" style="display:none; margin-top:10px;">
+<input type="text" id="wdOtp" placeholder="Kode OTP">
+<button id="wdStep2Btn" class="action-btn" style="background:#4caf50;">Kirim OTP</button>
 </div>
-<div class="metric-card">
-<div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
-<div class="bar-container" id="netBars"></div>
-</div>
-</div>
-<div class="info-grid" id="serverInfoGrid">
-<div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
-<div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
-<div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
-<div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
+<div id="wdResult" style="margin-top:10px; font-size:0.8rem;"></div>
 </div>
 </div>
+<div style="margin-top:20px;">
+<h3>Cek Status WD</h3>
+<input type="text" id="statusWdRef" placeholder="ref_no WD">
+<button id="checkWdStatusBtn" class="action-btn">Cek Status</button>
+<div id="wdStatusResult"></div>
+</div>
+<div style="margin-top:20px;">
+<h3>Cek Status Pembayaran (Manual)</h3>
+<input type="text" id="checkPayRef" placeholder="ref_no (QR/VA)">
+<button id="checkPayBtn" class="action-btn">Cek Status</button>
+<div id="payStatusResult"></div>
+</div>
+</div>
+
 <div class="section-title">
 <span><i class="fas fa-clock"></i> Verif cancel</span>
 <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
@@ -3465,7 +3532,7 @@ ${refundRequests.map(r => `
 <td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
 </tr>
 `).join('')}
-${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
+${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td>' : ''}
 </tbody>
 </table>
 </div>
@@ -3492,7 +3559,7 @@ ${userData.map(u => `
 <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
 </tr>
 `).join('')}
-${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
+${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td>' : ''}
 </tbody>
 </table>
 </div>
@@ -3525,7 +3592,7 @@ return `
 </tr>
 `;
 }).join('')}
-${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
+${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td>' : ''}
 </tbody>
 </table>
 </div>
@@ -3681,6 +3748,95 @@ console.error(err);
 alert('Terjadi kesalahan, coba lagi nanti.');
 }
 }
+// ========== MUSTIKA FUNCTIONS ==========
+async function refreshBalance() {
+try {
+const res = await fetch('/admin/mustika-balance');
+const data = await res.json();
+if (data.username) {
+document.getElementById('balanceAvailable').innerText = data.balance_available?.toLocaleString('id-ID') || '0';
+document.getElementById('balancePending').innerText = data.balance_pending?.toLocaleString('id-ID') || '0';
+} else {
+document.getElementById('balanceAvailable').innerText = 'Error';
+document.getElementById('balancePending').innerText = 'Error';
+}
+} catch(e) {
+document.getElementById('balanceAvailable').innerText = 'Error';
+document.getElementById('balancePending').innerText = 'Error';
+}
+}
+document.getElementById('refreshBalanceBtn').addEventListener('click', refreshBalance);
+refreshBalance();
+document.getElementById('validateBtn').addEventListener('click', async () => {
+const tipe = document.getElementById('valTipe').value;
+const kode = document.getElementById('valKode').value;
+const rek = document.getElementById('valRek').value;
+if (!kode || !rek) { alert('Isi kode dan rekening'); return; }
+const res = await fetch('/admin/validate-bank', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ tipe, kode, rek })
+});
+const data = await res.json();
+if (data.account_name) document.getElementById('valResult').innerHTML = '<span style="color: #4caf50;">✅ ' + data.account_name + '</span>';
+else document.getElementById('valResult').innerHTML = '<span style="color: #f44336;">❌ Gagal: ' + (data.error || 'Tidak ditemukan') + '</span>';
+});
+let wdRefNo = null;
+document.getElementById('wdStep1Btn').addEventListener('click', async () => {
+const tipe = document.getElementById('wdTipe').value;
+const kode = document.getElementById('wdKode').value;
+const rek = document.getElementById('wdRek').value;
+const amount = document.getElementById('wdAmount').value;
+if (!kode || !rek || !amount) { alert('Isi semua field'); return; }
+const res = await fetch('/admin/withdraw', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ tipe, kode, rek, amount })
+});
+const data = await res.json();
+if (data.status === 'success' && data.ref_no) {
+wdRefNo = data.ref_no;
+document.getElementById('wdOtpGroup').style.display = 'block';
+document.getElementById('wdResult').innerHTML = '✅ OTP dikirim, masukkan kode OTP.';
+} else {
+document.getElementById('wdResult').innerHTML = '❌ Gagal: ' + (data.message || data.error);
+}
+});
+document.getElementById('wdStep2Btn').addEventListener('click', async () => {
+const tipe = document.getElementById('wdTipe').value;
+const kode = document.getElementById('wdKode').value;
+const rek = document.getElementById('wdRek').value;
+const amount = document.getElementById('wdAmount').value;
+const otp = document.getElementById('wdOtp').value;
+if (!otp) { alert('Masukkan OTP'); return; }
+const res = await fetch('/admin/withdraw', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ tipe, kode, rek, amount, otp })
+});
+const data = await res.json();
+if (data.status === 'success') {
+document.getElementById('wdResult').innerHTML = '✅ Berhasil! Ref: ' + data.ref_no;
+document.getElementById('wdOtpGroup').style.display = 'none';
+refreshBalance();
+} else {
+document.getElementById('wdResult').innerHTML = '❌ Gagal: ' + (data.message || data.error);
+}
+});
+document.getElementById('checkWdStatusBtn').addEventListener('click', async () => {
+const ref = document.getElementById('statusWdRef').value;
+if (!ref) { alert('Masukkan ref_no'); return; }
+const res = await fetch('/admin/withdraw-status?ref_no=' + encodeURIComponent(ref));
+const data = await res.json();
+document.getElementById('wdStatusResult').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+});
+document.getElementById('checkPayBtn').addEventListener('click', async () => {
+const ref = document.getElementById('checkPayRef').value;
+if (!ref) { alert('Masukkan ref_no'); return; }
+const res = await fetch('/admin/check-payment?ref_no=' + encodeURIComponent(ref));
+const data = await res.json();
+document.getElementById('payStatusResult').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+});
 </script>
 </body>
 </html>
@@ -3688,26 +3844,26 @@ alert('Terjadi kesalahan, coba lagi nanti.');
     res.send(html);
   });
 
-// ==========================================================================
-// HALAMAN UTAMA (HOME) – BACKGROUND VIDEO, SLIDE-IN ANIMATION
-// ==========================================================================
-app.get('/', async (req, res) => {
-  const isLoggedIn = req.isAuthenticated();
-  const user = isLoggedIn ? req.user : null;
-  const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
-  const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
-  const users = await getUsers();
-  const orders = await getOrders();
-  const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
-  let totalPurchases = 0;
-  if (user) {
-    totalPurchases = orders
-      .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
-      .reduce((sum, o) => sum + o.amount, 0);
-  }
-  const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
-  const telegramUsername = (config.DEVELOPER || '').replace('@', '');
-  const html = `
+  // ==========================================================================
+  // HALAMAN UTAMA (HOME) – tidak diubah (tetap seperti semula)
+  // ==========================================================================
+  app.get('/', async (req, res) => {
+    const isLoggedIn = req.isAuthenticated();
+    const user = isLoggedIn ? req.user : null;
+    const photoUrl = user ? (user.photo ? `/api/avatar/${user.id}` : getGravatarUrl(user.email, 40)) : null;
+    const safeName = user ? escapeHTML(user.name) : 'Pengunjung';
+    const users = await getUsers();
+    const orders = await getOrders();
+    const totalUsers = users.filter(u => u.email !== config.ADMIN_EMAIL).length;
+    let totalPurchases = 0;
+    if (user) {
+      totalPurchases = orders
+        .filter(o => o.email === user.email && o.panel_created === true && o.status === 'paid')
+        .reduce((sum, o) => sum + o.amount, 0);
+    }
+    const whatsappNumber = (config.WHATSAPP || '').replace(/\D/g, '');
+    const telegramUsername = (config.DEVELOPER || '').replace('@', '');
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -4588,8 +4744,8 @@ generatePriceCards();
 </body>
 </html>
 `;
-  res.send(html);
-});
+    res.send(html);
+  });
 
   // ==========================================================================
   // 404 HANDLER
@@ -4668,6 +4824,62 @@ async function initGithub() {
   [owner, repo] = GITHUB_REPO.split('/');
   console.log(`GitHub siap: owner=${owner}, repo=${repo}, branch=${GITHUB_BRANCH}, path=${GITHUB_PATH}`);
 }
+
+// ============================================================================
+// ADMIN ENDPOINTS UNTUK MUSTIKA API
+// ============================================================================
+app.get('/admin/mustika-balance', isAuthenticated, isAdmin, async (req, res) => {
+  try {
+    const balance = await getMustikaBalance();
+    res.json(balance);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/validate-bank', isAuthenticated, isAdmin, async (req, res) => {
+  const { tipe, kode, rek } = req.body;
+  if (!tipe || !kode || !rek) return res.status(400).json({ error: 'Parameter tidak lengkap' });
+  try {
+    const result = await validateBankAccount(tipe, kode, rek);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/withdraw', isAuthenticated, isAdmin, async (req, res) => {
+  const { tipe, kode, rek, amount, otp } = req.body;
+  if (!tipe || !kode || !rek || !amount) return res.status(400).json({ error: 'Parameter tidak lengkap' });
+  try {
+    const result = await requestWithdrawal(tipe, kode, rek, amount, otp);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/admin/withdraw-status', isAuthenticated, isAdmin, async (req, res) => {
+  const { ref_no } = req.query;
+  if (!ref_no) return res.status(400).json({ error: 'ref_no diperlukan' });
+  try {
+    const result = await checkWithdrawalStatus(ref_no);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/admin/check-payment', isAuthenticated, isAdmin, async (req, res) => {
+  const { ref_no } = req.query;
+  if (!ref_no) return res.status(400).json({ error: 'ref_no diperlukan' });
+  try {
+    const result = await checkPaymentStatus(ref_no);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============================================================================
 // START SERVER
