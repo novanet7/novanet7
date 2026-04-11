@@ -1132,7 +1132,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - DIPERBAIKI
+  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - BACKGROUND TRANSPARAN
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1248,7 +1248,6 @@ margin-bottom:10px;
 font-size:26px;
 text-align:center;
 }
-/* Header atas dengan tombol */
 .top-actions {
   display: flex;
   justify-content: flex-end;
@@ -1272,19 +1271,23 @@ text-align:center;
   background: #5b8cff;
   color: #000;
 }
+/* QR Container - transparan, blur, tanpa background putih */
 .qr-container{
-background:#fff;
-padding:20px;
-border-radius:24px;
-display:inline-block;
-margin:15px auto;
-text-align:center;
-box-shadow:0 0 20px rgba(0,0,0,0.3);
+background: rgba(255, 255, 255, 0.1);
+backdrop-filter: blur(8px);
+border-radius: 24px;
+padding: 20px;
+display: inline-block;
+margin: 15px auto;
+text-align: center;
+box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+border: 1px solid rgba(91,140,255,0.3);
 }
 .qr-img{
 width:250px;
 height:250px;
 object-fit:contain;
+border-radius: 16px;
 }
 /* Info panel kecil di bawah QR */
 .payment-info {
@@ -1326,7 +1329,6 @@ object-fit:contain;
   border-radius: 40px;
   background: rgba(0,0,0,0.5);
 }
-/* Warna countdown */
 .countdown-badge.high { color: #4caf50; text-shadow: 0 0 5px #4caf50; }
 .countdown-badge.medium { color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
 .countdown-badge.low { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
@@ -1477,12 +1479,11 @@ function updateCountdownDisplay() {
   const seconds = remainingSeconds % 60;
   const timeStr = \`\${minutes.toString().padStart(2,'0')}:\${seconds.toString().padStart(2,'0')}\`;
   countdownBadge.innerText = timeStr;
-  // Atur warna berdasarkan sisa waktu
-  if (remainingSeconds > 120) { // lebih dari 2 menit -> hijau
+  if (remainingSeconds > 120) {
     countdownBadge.className = 'countdown-badge high';
-  } else if (remainingSeconds > 60) { // 1-2 menit -> kuning
+  } else if (remainingSeconds > 60) {
     countdownBadge.className = 'countdown-badge medium';
-  } else { // kurang dari 1 menit -> merah
+  } else {
     countdownBadge.className = 'countdown-badge low';
   }
   remainingSeconds--;
@@ -1575,7 +1576,6 @@ document.getElementById('checkManualBtn').addEventListener('click', () => {
   checkPaymentStatus(true);
 });
 
-// Download QR: fetch gambar lalu download sebagai file
 document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   const qrUrl = document.getElementById('qrImage').src;
   try {
