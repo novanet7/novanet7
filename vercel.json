@@ -5,7 +5,7 @@
   "trailingSlash": false,
   "functions": {
     "index.js": {
-      "maxDuration": 2
+      "maxDuration": 25
     }
   },
   "rewrites": [
