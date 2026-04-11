@@ -1,17 +1,1 @@
-[
-  {
-    "order_id": "ORDER_1775943374266_ZT6WTPBDF",
-    "email": "novanet403@gmail.com",
-    "panel_type": "1gb",
-    "amount": 100,
-    "status": "pending",
-    "created_at": "2026-04-11T21:36:17.723Z",
-    "panel_created": false,
-    "payment_reference": "QR-15-1775943375",
-    "qrImage": "https://claidexpayment.host/qr/QR-15-1775943375.png",
-    "payUrl": "https://claidexpayment.host/pay.php?ref=QR-15-1775943375",
-    "statusUrl": "https://claidexpayment.host/check-status.php?ref=QR-15-1775943375",
-    "expired": "5 minutes",
-    "expired_time": "2026-04-11T21:41:17.723Z"
-  }
-]
+[]
