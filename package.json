@@ -9,7 +9,7 @@
     "vercel-build": "echo Build completed"
   },
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "dependencies": {
     "@octokit/rest": "^20.1.1",
