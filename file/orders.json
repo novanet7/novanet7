@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "order_id": "ORDER_1775933916782_SH60DF28X",
+    "email": "cimbrutdjohanny@gmail.com",
+    "panel_type": "1gb",
+    "amount": 100,
+    "status": "pending",
+    "created_at": "2026-04-11T18:58:40.170Z",
+    "panel_created": false,
+    "payment_reference": "QR-15-1775933917",
+    "qrImage": "https://claidexpayment.host/qr/QR-15-1775933917.png",
+    "payUrl": "https://claidexpayment.host/pay.php?ref=QR-15-1775933917",
+    "statusUrl": "https://claidexpayment.host/check-status.php?ref=QR-15-1775933917",
+    "expired": "5 minutes",
+    "expired_time": "2026-04-11T19:03:40.170Z"
+  }
+]
