@@ -615,7 +615,6 @@ async function uploadAvatarToGitHub(user, fileBuffer, fileName, mimeType) {
     branch: GITHUB_BRANCH
   });
   
-  // Verifikasi
   try {
     const { data } = await octokit.repos.getContent({
       owner, repo, path: avatarPath, ref: GITHUB_BRANCH
@@ -901,13 +900,10 @@ async function createClaidexPayment(amount, orderId) {
   try {
     console.log(`[Claidex] 🔄 Membuat QR untuk order ${orderId}, amount ${amount}`);
     const response = await fetch(url);
-    
-    // Cek status HTTP
     if (!response.ok) {
       console.error(`[Claidex] ❌ HTTP error: ${response.status} ${response.statusText}`);
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
     const data = await response.json();
     console.log('[Claidex] 📦 Response dari API:', JSON.stringify(data, null, 2));
     
@@ -929,7 +925,6 @@ async function createClaidexPayment(amount, orderId) {
     }
   } catch (error) {
     console.error('[Claidex] ❌ Exception:', error.message);
-    // Kembalikan object error agar tidak throw ke route
     return { success: false, error: error.message };
   }
 }
@@ -1008,65 +1003,61 @@ Crawl-delay: 1
   // API ROUTES
   // ==========================================================================
   app.post('/api/create-order', isAuthenticated, async (req, res) => {
-  try {
-    const { panel_type, paneltype } = req.body;
-    const panelType = panel_type || paneltype;
-    if (!panelType) {
-      return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
+    try {
+      const { panel_type, paneltype } = req.body;
+      const panelType = panel_type || paneltype;
+      if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
+      const email = req.user.email;
+      const priceMap = {
+        '1gb': config.PRICE_1GB || 500,
+        '2gb': config.PRICE_2GB || 500,
+        '3gb': config.PRICE_3GB || 500,
+        '4gb': config.PRICE_4GB || 500,
+        '5gb': config.PRICE_5GB || 500,
+        '6gb': config.PRICE_6GB || 500,
+        '7gb': config.PRICE_7GB || 500,
+        '8gb': config.PRICE_8GB || 500,
+        '9gb': config.PRICE_9GB || 500,
+        '10gb': config.PRICE_10GB || 500,
+        'unli': config.PRICE_UNLI || 500
+      };
+      const amount = priceMap[panelType] || 500;
+      const orderId = generateOrderId();
+      
+      console.log(`[CreateOrder] Membuat order ${orderId} untuk ${email}, paket ${panelType}, amount ${amount}`);
+      const claidexRes = await createClaidexPayment(amount, orderId);
+      if (!claidexRes.success) {
+        console.error('[CreateOrder] Gagal membuat QR:', claidexRes.error);
+        return res.status(500).json({ success: false, message: claidexRes.error || 'Gagal membuat QR pembayaran' });
+      }
+      
+      const order = {
+        order_id: orderId,
+        email: email,
+        panel_type: panelType,
+        amount: amount,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        panel_created: false,
+        payment_reference: claidexRes.reference,
+        qrImage: claidexRes.qrImage,
+        payUrl: claidexRes.payUrl,
+        statusUrl: claidexRes.statusUrl,
+        expired: claidexRes.expired,
+        expired_time: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+      };
+      await addOrder(order);
+      console.log(`[CreateOrder] Order ${orderId} berhasil disimpan, redirect ke /payment/${orderId}`);
+      
+      res.json({ success: true, order_id: orderId });
+    } catch (error) {
+      console.error('[CreateOrder] Unexpected error:', error);
+      await sendTelegramError(error, { route: '/api/create-order', body: req.body });
+      res.status(500).json({ success: false, message: 'Internal server error' });
     }
-    
-    const email = req.user.email;
-    const priceMap = {
-      '1gb': config.PRICE_1GB || 500,
-      '2gb': config.PRICE_2GB || 500,
-      '3gb': config.PRICE_3GB || 500,
-      '4gb': config.PRICE_4GB || 500,
-      '5gb': config.PRICE_5GB || 500,
-      '6gb': config.PRICE_6GB || 500,
-      '7gb': config.PRICE_7GB || 500,
-      '8gb': config.PRICE_8GB || 500,
-      '9gb': config.PRICE_9GB || 500,
-      '10gb': config.PRICE_10GB || 500,
-      'unli': config.PRICE_UNLI || 500
-    };
-    const amount = priceMap[panelType] || 500;
-    const orderId = generateOrderId();
-    
-    console.log(`[CreateOrder] Membuat order ${orderId} untuk ${email}, paket ${panelType}, amount ${amount}`);
-    
-    const claidexRes = await createClaidexPayment(amount, orderId);
-    if (!claidexRes.success) {
-      console.error('[CreateOrder] Gagal membuat QR:', claidexRes.error);
-      return res.status(500).json({ success: false, message: claidexRes.error || 'Gagal membuat QR pembayaran' });
-    }
-    
-    const order = {
-      order_id: orderId,
-      email: email,
-      panel_type: panelType,
-      amount: amount,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-      panel_created: false,
-      payment_reference: claidexRes.reference,
-      qrImage: claidexRes.qrImage,
-      payUrl: claidexRes.payUrl,
-      statusUrl: claidexRes.statusUrl,
-      expired: claidexRes.expired,
-      expired_time: new Date(Date.now() + 5 * 60 * 1000).toISOString()
-    };
-    await addOrder(order);
-    console.log(`[CreateOrder] Order ${orderId} berhasil disimpan, redirect ke /payment/${orderId}`);
-    
-    res.json({ success: true, order_id: orderId });
-  } catch (error) {
-    console.error('[CreateOrder] Unexpected error:', error);
-    await sendTelegramError(error, { route: '/api/create-order', body: req.body });
-    res.status(500).json({ success: false, message: 'Internal server error' });
-  }
-});
+  });
 
-  // Endpoint untuk membuat panel setelah pembayaran sukses (dipanggil dari halaman payment)
+  // Endpoint untuk membuat panel setelah pembayaran sukses
   app.post('/api/create-panel', async (req, res) => {
     try {
       const { order_id } = req.body;
@@ -1141,7 +1132,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN (QR CODE + POLLING)
+  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD)
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1149,15 +1140,12 @@ Crawl-delay: 1
     if (!order) {
       return res.status(404).send('Order tidak ditemukan');
     }
-    // Pastikan order milik user yang login
     if (order.email !== req.user.email) {
       return res.status(403).send('Akses ditolak');
     }
     if (order.panel_created) {
-      // Jika panel sudah dibuat, langsung redirect ke profil
       return res.redirect('/profile');
     }
-    // Hitung sisa waktu expired (5 menit)
     const expiredTime = new Date(order.expired_time).getTime();
     const now = Date.now();
     let expired = false;
@@ -1166,6 +1154,21 @@ Crawl-delay: 1
       expired = true;
     }
     
+    const panelSpecs = {
+      '1gb': { ram: '1 GB', disk: '1 GB', cpu: '40%' },
+      '2gb': { ram: '2 GB', disk: '2 GB', cpu: '60%' },
+      '3gb': { ram: '3 GB', disk: '3 GB', cpu: '80%' },
+      '4gb': { ram: '4 GB', disk: '4 GB', cpu: '100%' },
+      '5gb': { ram: '5 GB', disk: '5 GB', cpu: '120%' },
+      '6gb': { ram: '6 GB', disk: '6 GB', cpu: '140%' },
+      '7gb': { ram: '7 GB', disk: '7 GB', cpu: '160%' },
+      '8gb': { ram: '8 GB', disk: '8 GB', cpu: '180%' },
+      '9gb': { ram: '9 GB', disk: '9 GB', cpu: '200%' },
+      '10gb': { ram: '10 GB', disk: '10 GB', cpu: '220%' },
+      'unli': { ram: 'Unlimited', disk: 'Unlimited', cpu: 'Unlimited' }
+    };
+    const specs = panelSpecs[order.panel_type] || { ram: '-', disk: '-', cpu: '-' };
+    
     const html = `
 <!DOCTYPE html>
 <html lang="id">
@@ -1173,6 +1176,7 @@ Crawl-delay: 1
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
 <title>Pembayaran - ${SITE_NAME} Panel</title>
+<link rel="icon" type="image/jpeg" href="${config.FAVICON}">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
@@ -1211,15 +1215,28 @@ background:rgba(0,0,0,0.65);
 z-index:-1;
 }
 .container{
-max-width:550px;
+max-width:650px;
 width:100%;
 background:rgba(15,25,45,0.6);
 backdrop-filter:blur(12px);
 border-radius:32px;
-padding:35px;
+padding:30px;
 border:1px solid rgba(91,140,255,0.4);
 box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
+animation:fadeInUp 0.5s ease;
+}
+@keyframes fadeInUp{
+from{opacity:0;transform:translateY(30px)}
+to{opacity:1;transform:translateY(0)}
+}
+.logo-payment{
 text-align:center;
+margin-bottom:20px;
+}
+.logo-payment img{
+height:70px;
+width:auto;
+border-radius:12px;
 }
 h1{
 font-family:'Orbitron';
@@ -1227,15 +1244,33 @@ background:linear-gradient(135deg,#fff,#5b8cff);
 -webkit-background-clip:text;
 background-clip:text;
 color:transparent;
-margin-bottom:15px;
-font-size:28px;
+margin-bottom:10px;
+font-size:26px;
+text-align:center;
 }
+.order-details{
+background:rgba(0,0,0,0.4);
+border-radius:20px;
+padding:15px;
+margin-bottom:20px;
+border:1px solid rgba(91,140,255,0.3);
+}
+.detail-row{
+display:flex;
+justify-content:space-between;
+padding:8px 0;
+border-bottom:1px solid rgba(255,255,255,0.1);
+}
+.detail-row:last-child{border-bottom:none}
+.detail-label{color:#8a9bb0;font-weight:600}
+.detail-value{color:#fff;font-weight:500}
 .qr-container{
 background:#fff;
 padding:20px;
 border-radius:24px;
 display:inline-block;
-margin:20px 0;
+margin:15px auto;
+text-align:center;
 box-shadow:0 0 20px rgba(0,0,0,0.3);
 }
 .qr-img{
@@ -1263,10 +1298,11 @@ color:#ff4444;
 font-weight:bold;
 }
 .countdown{
-font-size:24px;
+font-size:28px;
 font-family:monospace;
 color:#ffcc00;
 margin:10px 0;
+letter-spacing:2px;
 }
 .btn-group{
 display:flex;
@@ -1307,11 +1343,13 @@ display:block;
 margin-top:20px;
 color:#8a9bb0;
 text-decoration:none;
+text-align:center;
 }
 .footer{
 font-size:12px;
 color:#8a9bb0;
 margin-top:20px;
+text-align:center;
 }
 .loader{
 display:inline-block;
@@ -1323,12 +1361,27 @@ border-radius:50%;
 animation:spin 0.8s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+.warning{
+color:#ffaa00;
+font-size:13px;
+margin-top:10px;
+}
 </style>
 </head>
 <body>
 <div class="container">
+<div class="logo-payment">
+<img src="https://files.catbox.moe/u47x3d.png" alt="${SITE_NAME}">
+</div>
 <h1><i class="fas fa-qrcode"></i> Scan QRIS</h1>
-<p>Lakukan pembayaran sebesar <strong>Rp ${order.amount.toLocaleString('id-ID')}</strong> dengan QRIS di bawah.</p>
+<div class="order-details">
+<div class="detail-row"><span class="detail-label">📦 Paket</span><span class="detail-value">${order.panel_type.toUpperCase()}</span></div>
+<div class="detail-row"><span class="detail-label">💾 RAM</span><span class="detail-value">${specs.ram}</span></div>
+<div class="detail-row"><span class="detail-label">💿 Disk</span><span class="detail-value">${specs.disk}</span></div>
+<div class="detail-row"><span class="detail-label">⚙️ CPU</span><span class="detail-value">${specs.cpu}</span></div>
+<div class="detail-row"><span class="detail-label">💰 Harga</span><span class="detail-value">Rp ${order.amount.toLocaleString('id-ID')}</span></div>
+<div class="detail-row"><span class="detail-label">📧 Email</span><span class="detail-value">${escapeHTML(order.email)}</span></div>
+</div>
 <div class="qr-container">
 <img src="${order.qrImage}" class="qr-img" alt="QR Code" id="qrImage">
 </div>
@@ -1337,13 +1390,15 @@ animation:spin 0.8s linear infinite;
 <div id="countdownArea" class="countdown"></div>
 </div>
 <div class="btn-group">
+<button class="btn" id="downloadQrBtn"><i class="fas fa-download"></i> Download QR</button>
 <button class="btn" id="checkManualBtn"><i class="fas fa-sync-alt"></i> Cek Status Manual</button>
 <a href="/profile" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Kembali ke Profil</a>
 </div>
-<div class="footer">
+<div class="warning">
 ⚠️ QR Code berlaku selama 5 menit. Jika expired, silakan buat order baru.
 </div>
 <a href="/" class="back-link">← Beranda</a>
+<div class="footer">Pembayaran akan dikonfirmasi otomatis dalam beberapa detik setelah transfer.</div>
 </div>
 <script>
 const orderId = "${orderId}";
@@ -1369,11 +1424,10 @@ function updateCountdownDisplay() {
   }
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
-  area.innerHTML = \`⏱️ Sisa waktu: \${minutes} menit \${seconds} detik\`;
+  area.innerHTML = \`⏱️ Sisa waktu: \${minutes.toString().padStart(2,'0')} menit \${seconds.toString().padStart(2,'0')} detik\`;
   remainingSeconds--;
 }
 
-// Countdown timer
 const countdownInterval = setInterval(() => {
   if (!expired) {
     if (remainingSeconds <= 0) {
@@ -1398,13 +1452,11 @@ async function checkPaymentStatus(isManual = false) {
     const response = await fetch(statusUrl);
     const data = await response.json();
     if (data.paid === true) {
-      // Pembayaran berhasil
       if (pollingInterval) clearInterval(pollingInterval);
       clearInterval(countdownInterval);
       statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Sedang membuat panel...';
       statusTextEl.classList.remove('status-pending');
       statusTextEl.classList.add('status-paid');
-      // Panggil API create panel
       const createRes = await fetch('/api/create-panel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1412,7 +1464,6 @@ async function checkPaymentStatus(isManual = false) {
       });
       const createData = await createRes.json();
       if (createData.success) {
-        // Redirect ke halaman sukses (profile dengan notifikasi)
         window.location.href = '/profile?payment_success=' + orderId;
       } else {
         alert('Panel gagal dibuat: ' + (createData.message || 'Unknown error'));
@@ -1446,7 +1497,6 @@ async function checkPaymentStatus(isManual = false) {
   }
 }
 
-// Mulai polling setiap 5 detik
 function startPolling() {
   pollingInterval = setInterval(() => checkPaymentStatus(false), 5000);
 }
@@ -1454,6 +1504,26 @@ startPolling();
 
 document.getElementById('checkManualBtn').addEventListener('click', () => {
   checkPaymentStatus(true);
+});
+
+document.getElementById('downloadQrBtn').addEventListener('click', () => {
+  const imgUrl = document.getElementById('qrImage').src;
+  fetch(imgUrl)
+    .then(res => res.blob())
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'qris_${orderId}.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    })
+    .catch(err => {
+      console.error('Download error:', err);
+      alert('Gagal download QR, coba klik kanan pada gambar dan pilih "Save image as"');
+    });
 });
 </script>
 </body>
@@ -1542,7 +1612,7 @@ document.getElementById('checkManualBtn').addEventListener('click', () => {
   });
 
   // ==========================================================================
-  // API CANCEL ORDER (ADMIN)
+  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
   // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -1938,7 +2008,6 @@ errorDiv.style.display = 'block';
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
       
-      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
       console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
       
@@ -3387,7 +3456,7 @@ ${userData.map(u => `
 <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
 </tr>
 `).join('')}
-${userData.length === 0 ? '<td><td colspan="9">Belum ada user</td></tr>' : ''}
+${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td></tr>' : ''}
 </tbody>
 </table>
 </div>
@@ -3639,7 +3708,6 @@ body {
   position: relative;
   overflow-x: hidden;
 }
-/* Video Background */
 #bgVideo {
   position: fixed;
   top: 0;
@@ -4463,7 +4531,6 @@ credentials: 'include'
 });
 const data=await response.json();
 if(data.success){
-// Redirect ke halaman pembayaran dengan order_id
 window.location.href = '/payment/' + data.order_id;
 } else {
 alert(data.message||'Gagal membuat order');
@@ -4521,20 +4588,25 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT)
+// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT & EXPIRED_TIME)
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
     const orders = await getOrders();
     const now = Date.now();
-    const toCancel = orders.filter(o => o.status === 'pending' && (now - new Date(o.created_at).getTime() > 120000));
+    const toCancel = orders.filter(o => {
+      if (o.status !== 'pending') return false;
+      if (o.expired_time && now > new Date(o.expired_time).getTime()) return true;
+      if (now - new Date(o.created_at).getTime() > 120000) return true;
+      return false;
+    });
     if (toCancel.length) {
       const newActive = orders.filter(o => !toCancel.some(c => c.order_id === o.order_id));
       await saveOrders(newActive);
       const cancelled = await getCancelledOrders();
       toCancel.forEach(order => { cancelled.push({ ...order, status: 'cancel', cancelled_at: new Date().toISOString() }); });
       await saveCancelledOrders(cancelled);
-      console.log(`✅ ${toCancel.length} order dibatalkan karena melebihi 2 menit`);
+      console.log(`✅ ${toCancel.length} order dibatalkan karena melebihi batas waktu`);
     }
   } catch (err) { console.error('Auto cancel error:', err); }
 }
