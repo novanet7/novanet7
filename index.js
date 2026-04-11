@@ -1132,7 +1132,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - DENGAN PROXY CORS
+  // HALAMAN PEMBAYARAN - VIDEO BACKGROUND DENGAN SUARA
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1182,7 +1182,6 @@ Crawl-delay: 1
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{
-background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
 color:#fff;
 font-family:'Rajdhani',sans-serif;
 min-height:100vh;
@@ -1191,38 +1190,40 @@ justify-content:center;
 align-items:center;
 padding:20px;
 position:relative;
+overflow-x:hidden;
 }
-body::before{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:url('https://files.catbox.moe/1sr3hx.jpg') no-repeat center center fixed;
-background-size:cover;
-opacity:0.2;
-z-index:-2;
+/* Video Background */
+#bgVideo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  pointer-events: none;
 }
-body::after{
-content:'';
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.65);
-z-index:-1;
+/* Overlay gelap agar teks mudah dibaca */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: -1;
+  pointer-events: none;
 }
 .container{
 max-width:650px;
 width:100%;
-background:rgba(15,25,45,0.6);
-backdrop-filter:blur(12px);
+background:rgba(15,25,45,0.4);
+backdrop-filter:blur(10px);
 border-radius:32px;
 padding:30px;
 border:1px solid rgba(91,140,255,0.4);
-box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
+box-shadow:0 25px 45px rgba(0,0,0,0.4),0 0 30px rgba(91,140,255,0.2);
 animation:fadeInUp 0.5s ease;
 }
 @keyframes fadeInUp{
@@ -1234,9 +1235,13 @@ text-align:center;
 margin-bottom:20px;
 }
 .logo-payment img{
-height:70px;
+height:84px;
 width:auto;
 border-radius:12px;
+transition: transform 0.3s ease;
+}
+.logo-payment img:hover{
+transform: scale(1.02);
 }
 h1{
 font-family:'Orbitron';
@@ -1262,16 +1267,17 @@ text-align:center;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0,0,0,0.3);
   padding: 6px 14px;
   border-radius: 40px;
-  transition: 0.2s;
+  transition: 0.3s;
 }
 .top-actions a:hover {
   background: #5b8cff;
   color: #000;
+  transform: translateY(-2px);
 }
-/* QR Container - transparan, blur, dan ditengah */
+/* QR Container */
 .qr-wrapper {
   display: flex;
   justify-content: center;
@@ -1286,15 +1292,24 @@ display: inline-block;
 text-align: center;
 box-shadow: 0 8px 20px rgba(0,0,0,0.3);
 border: 1px solid rgba(91,140,255,0.3);
+transition: all 0.3s ease;
+}
+.qr-container:hover {
+  box-shadow: 0 0 25px rgba(91,140,255,0.5);
+  border-color: #5b8cff;
 }
 .qr-img{
 width:250px;
 height:250px;
 object-fit:contain;
 border-radius: 16px;
+transition: transform 0.2s;
+}
+.qr-img:hover{
+transform: scale(1.02);
 }
 .payment-info {
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.4);
   border-radius: 20px;
   padding: 12px 16px;
   margin: 10px 0 20px;
@@ -1323,24 +1338,55 @@ border-radius: 16px;
   color: #fff;
   font-weight: 500;
 }
+.datetime-info {
+  font-size: 12px;
+  background: rgba(0,0,0,0.3);
+  padding: 6px 12px;
+  border-radius: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+}
+.datetime-info i {
+  color: #5b8cff;
+}
+.countdown-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.5);
+  padding: 4px 12px;
+  border-radius: 40px;
+}
 .countdown-badge {
   font-family: monospace;
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 2px;
-  padding: 4px 12px;
-  border-radius: 40px;
-  background: rgba(0,0,0,0.5);
 }
 .countdown-badge.high { color: #4caf50; text-shadow: 0 0 5px #4caf50; }
 .countdown-badge.medium { color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
 .countdown-badge.low { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
+.spinner-clock {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #5b8cff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .status-badge{
 display:inline-block;
 padding:8px 20px;
 border-radius:40px;
 font-weight:bold;
 margin:15px 0;
+transition: all 0.3s;
 }
 .status-pending{
 background:#ff9800;
@@ -1371,12 +1417,12 @@ padding:10px 20px;
 border-radius:50px;
 text-decoration:none;
 font-weight:bold;
-transition:0.2s;
+transition:0.3s;
 border:none;
 cursor:pointer;
 }
 .btn:hover{
-transform:scale(1.02);
+transform:translateY(-2px);
 box-shadow:0 0 20px rgba(91,140,255,0.5);
 }
 .btn-outline{
@@ -1403,15 +1449,36 @@ border-top-color:#5b8cff;
 border-radius:50%;
 animation:spin 0.8s linear infinite;
 }
-@keyframes spin{to{transform:rotate(360deg)}}
 .warning{
 color:#ffaa00;
 font-size:13px;
 margin-top:10px;
 }
+.unmute-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: #2a3a60;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 12px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(4px);
+}
+.unmute-btn.show {
+  display: flex;
+}
 </style>
 </head>
 <body>
+<video id="bgVideo" src="https://litter.catbox.moe/yfymi2.mp4" autoplay loop playsinline muted></video>
+<button id="unmuteBtn" class="unmute-btn"><i class="fas fa-volume-up"></i> Aktifkan Suara</button>
 <div class="container">
 <div class="top-actions">
 <a href="/"><i class="fas fa-home"></i> Beranda</a>
@@ -1435,7 +1502,15 @@ margin-top:10px;
 <div class="item"><span class="label">💰</span><span class="value">Rp ${order.amount.toLocaleString('id-ID')}</span></div>
 <div class="item"><span class="label">📧</span><span class="value" style="max-width:150px; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(order.email)}</span></div>
 </div>
+<div style="display: flex; gap: 12px; align-items: center;">
+<div class="datetime-info" id="datetimeInfo">
+<i class="fas fa-calendar-alt"></i> <span id="currentDate">--</span> <i class="fas fa-clock"></i> <span id="currentTime">--:--:--</span>
+</div>
+<div class="countdown-wrapper">
+<div class="spinner-clock"></div>
 <div class="countdown-badge" id="countdownBadge">--:--</div>
+</div>
+</div>
 </div>
 <div id="statusArea" style="text-align:center;">
 <span class="status-badge status-pending" id="statusText">⏳ Menunggu Pembayaran</span>
@@ -1457,6 +1532,44 @@ let remainingSeconds = ${remainingSeconds};
 
 const countdownBadge = document.getElementById('countdownBadge');
 const statusTextEl = document.getElementById('statusText');
+const currentDateSpan = document.getElementById('currentDate');
+const currentTimeSpan = document.getElementById('currentTime');
+const bgVideo = document.getElementById('bgVideo');
+const unmuteBtn = document.getElementById('unmuteBtn');
+
+// Fungsi update tanggal dan jam (Asia/Jakarta)
+function updateDateTime() {
+  const now = new Date();
+  const optionsDate = { 
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' 
+  };
+  const optionsTime = { 
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' 
+  };
+  const dateStr = now.toLocaleDateString('id-ID', optionsDate);
+  const timeStr = now.toLocaleTimeString('id-ID', optionsTime);
+  currentDateSpan.innerText = dateStr;
+  currentTimeSpan.innerText = timeStr;
+}
+updateDateTime();
+setInterval(updateDateTime, 1000);
+
+// Menangani autoplay video dengan suara
+if (bgVideo) {
+  // Coba putar dengan suara (mungkin gagal)
+  bgVideo.muted = false;
+  bgVideo.play().catch(e => {
+    console.log('Autoplay with sound blocked, showing unmute button');
+    unmuteBtn.classList.add('show');
+  });
+  // Jika video berhenti karena kebijakan browser, user bisa klik tombol
+  unmuteBtn.addEventListener('click', () => {
+    bgVideo.muted = false;
+    bgVideo.play().then(() => {
+      unmuteBtn.classList.remove('show');
+    }).catch(err => console.log('Still cannot play:', err));
+  });
+}
 
 function updateCountdownDisplay() {
   if (expired) {
