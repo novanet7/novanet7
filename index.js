@@ -1132,7 +1132,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD)
+  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - DIPERBAIKI
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1450,13 +1450,22 @@ async function checkPaymentStatus(isManual = false) {
   }
   try {
     const response = await fetch(statusUrl);
+    if (!response.ok) {
+      throw new Error(\`HTTP \${response.status}\`);
+    }
     const data = await response.json();
+    console.log('[CheckStatus] Response:', data);
+    
+    // Cek apakah pembayaran sudah berhasil berdasarkan field "paid"
     if (data.paid === true) {
+      // Hentikan polling dan countdown
       if (pollingInterval) clearInterval(pollingInterval);
       clearInterval(countdownInterval);
       statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Sedang membuat panel...';
       statusTextEl.classList.remove('status-pending');
       statusTextEl.classList.add('status-paid');
+      
+      // Panggil API create panel
       const createRes = await fetch('/api/create-panel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1470,28 +1479,35 @@ async function checkPaymentStatus(isManual = false) {
         window.location.href = '/profile';
       }
       return true;
-    } else {
+    } else if (data.status === 'pending' || data.paid === false) {
+      // Masih pending
       if (isManual) {
-        statusTextEl.innerHTML = '⏳ Masih menunggu pembayaran';
+        statusTextEl.innerHTML = '⏳ Pembayaran masih pending. Silakan tunggu atau cek lagi nanti.';
         setTimeout(() => {
-          if (statusTextEl.innerHTML === '⏳ Masih menunggu pembayaran') {
+          if (statusTextEl.innerHTML === '⏳ Pembayaran masih pending. Silakan tunggu atau cek lagi nanti.') {
             statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
           }
-        }, 2000);
+        }, 3000);
       } else {
         statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
       }
       return false;
+    } else {
+      // Status tidak dikenal
+      throw new Error('Respons tidak dikenal: ' + JSON.stringify(data));
     }
   } catch (err) {
     console.error('Check status error:', err);
     if (isManual) {
-      statusTextEl.innerHTML = '⚠️ Gagal mengecek status. Coba lagi nanti.';
+      statusTextEl.innerHTML = '⚠️ Gagal mengecek status: ' + err.message + '. Coba lagi nanti.';
       setTimeout(() => {
-        if (statusTextEl.innerHTML === '⚠️ Gagal mengecek status. Coba lagi nanti.') {
+        if (statusTextEl.innerHTML.includes('Gagal mengecek status')) {
           statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
         }
-      }, 3000);
+      }, 5000);
+    } else {
+      // Pada polling, hanya log error, jangan ubah tampilan agar tidak mengganggu
+      console.error('Polling error:', err.message);
     }
     return false;
   }
@@ -1502,28 +1518,33 @@ function startPolling() {
 }
 startPolling();
 
+// Tombol cek manual
 document.getElementById('checkManualBtn').addEventListener('click', () => {
   checkPaymentStatus(true);
 });
 
+// Tombol download QR - menggunakan link langsung agar tidak kena CORS
 document.getElementById('downloadQrBtn').addEventListener('click', () => {
-  const imgUrl = document.getElementById('qrImage').src;
-  fetch(imgUrl)
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'qris_${orderId}.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    })
-    .catch(err => {
-      console.error('Download error:', err);
-      alert('Gagal download QR, coba klik kanan pada gambar dan pilih "Save image as"');
-    });
+  const qrUrl = document.getElementById('qrImage').src;
+  // Cara termudah: buka link di tab baru agar user bisa simpan sendiri
+  // Atau gunakan a.href download (tidak selalu bekerja karena CORS)
+  // Karena gambar dari domain berbeda, kita beri opsi buka di tab baru
+  window.open(qrUrl, '_blank');
+  // Tampilkan notifikasi
+  const toast = document.createElement('div');
+  toast.innerText = 'Gambar QR dibuka di tab baru. Klik kanan dan pilih "Simpan gambar sebagai..."';
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.backgroundColor = '#2a3a60';
+  toast.style.color = '#fff';
+  toast.style.padding = '10px 20px';
+  toast.style.borderRadius = '30px';
+  toast.style.fontSize = '12px';
+  toast.style.zIndex = '9999';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 });
 </script>
 </body>
@@ -1675,7 +1696,7 @@ document.getElementById('downloadQrBtn').addEventListener('click', () => {
   });
 
   // ==========================================================================
-  // ROUTE LOGIN (GET & POST)
+  // ROUTE LOGIN (GET & POST) - (sama seperti sebelumnya)
   // ==========================================================================
   app.get('/login', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
@@ -1803,7 +1824,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // ROUTE REGISTER (GET & POST)
+  // ROUTE REGISTER (GET & POST) - (sama seperti sebelumnya, tidak diubah)
   // ==========================================================================
   app.get('/register', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
@@ -2036,7 +2057,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST)
+  // ROUTE PROFILE (GET & POST) - (sama seperti sebelumnya)
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -4588,7 +4609,7 @@ a:hover{background:#5b8cff;color:#000;box-shadow:0 0 20px #5b8cff;}
 }
 
 // ============================================================================
-// AUTO CANCEL EXPIRED ORDERS (HAPUS ORDER PENDING > 2 MENIT & EXPIRED_TIME)
+// AUTO CANCEL EXPIRED ORDERS
 // ============================================================================
 async function autoCancelExpiredOrders() {
   try {
