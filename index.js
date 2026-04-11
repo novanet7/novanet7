@@ -1,6 +1,5 @@
 const express = require('express');
 const fetch = require('node-fetch');
-const { HttpsProxyAgent } = require('https-proxy-agent');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const session = require('express-session');
@@ -15,7 +14,6 @@ const multer = require('multer');
 const { Octokit } = require('@octokit/rest');
 const config = require('./setting.js');
 const jwt = require('jsonwebtoken');
-const MustikaPay = require('mustikapay-node');
 
 const app = express();
 const SITE_NAME = config.SITE_NAME || 'novanet';
@@ -23,14 +21,14 @@ const PORT = config.PORT || 8080;
 const HOST = config.HOST || '0.0.0.0';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const JWT_SECRET = config.JWT_SECRET || config.SESSION_SECRET || 'novabot-jwt-secret-2026';
-const MUSTIKA_API_KEY = config.MUSTIKA_API_KEY;
-if (!MUSTIKA_API_KEY) {
-  console.error('❌ MUSTIKA_API_KEY tidak ditemukan di setting.js');
+
+// API KEY untuk ClaidexPayment
+const CLAIDEX_API_KEY = config.CLAIDEX_API_KEY;
+if (!CLAIDEX_API_KEY) {
+  console.error('❌ CLAIDEX_API_KEY tidak ditemukan di setting.js');
   process.exit(1);
 }
-const mustikaPay = new MustikaPay({ apiKey: MUSTIKA_API_KEY });
-const PROXY_URL = 'https://noble:fp_64ce469a7ca96b5f@p-a04a9564.noble-ip.com:3129';
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+
 let GITHUB_TOKEN = null;
 let GITHUB_REPO = null;
 let GITHUB_BRANCH = 'main';
@@ -896,113 +894,30 @@ async function deletePterodactylServer(serverId) {
 }
 
 // ============================================================================
-// FUNGSI MUSTIKA PAYMENT (QRIS)
+// FUNGSI PEMBAYARAN CLAIDEX PAYMENT
 // ============================================================================
-async function createMustikaPayment(amount, redirect_url, customer_name, product_name) {
-  const apiUrl = 'https://mustikapayment.com/api/createpay';
-  const params = new URLSearchParams();
-  params.append('amount', amount.toString());
-  params.append('redirect_url', redirect_url);
-  params.append('customer_name', customer_name);
-  params.append('product_name', product_name);
-
+async function createClaidexPayment(amount, orderId) {
+  const url = `https://api.claidexpayment.host/create-qr.php?api_key=${CLAIDEX_API_KEY}&amount=${amount}&order_id=${orderId}`;
   try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'X-Api-Key': MUSTIKA_API_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: params.toString(),
-      agent: proxyAgent
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('HTTP Error:', response.status, text);
-      throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
-    }
-
-    const rawText = await response.text();
-    console.log('Raw response:', rawText);
-
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      console.error('Gagal parse JSON:', rawText);
-      throw new Error('Respons dari Mustika bukan JSON: ' + rawText.substring(0, 100));
-    }
-
-    if (data.status === 'success' && data.payment_link) {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.success === true) {
       return {
         success: true,
-        payment_link: data.payment_link,
-        ref_no: data.ref_no,
+        reference: data.reference,
+        qrImage: data.qrImage,
+        payUrl: data.payUrl,
+        statusUrl: data.statusUrl,
+        expired: data.expired,
         amount: data.amount
       };
     } else {
-      throw new Error(data.message || 'Gagal membuat transaksi');
+      throw new Error(data.message || 'Gagal membuat QR pembayaran');
     }
   } catch (error) {
-    console.error('Create Mustika Payment error:', error);
+    console.error('Create Claidex Payment error:', error);
     return { success: false, error: error.message };
   }
-}
-
-// ============================================================================
-// FUNGSI UMUM MUSTIKA API (saldo, validasi, withdraw, cek status)
-// ============================================================================
-async function callMustikaApi(endpoint, method = 'GET', params = null) {
-  const url = `https://mustikapayment.com${endpoint}`;
-  const options = {
-    method,
-    headers: {
-      'X-Api-Key': MUSTIKA_API_KEY,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    agent: proxyAgent
-  };
-  if (params && (method === 'POST' || method === 'GET')) {
-    const searchParams = new URLSearchParams(params);
-    if (method === 'POST') {
-      options.body = searchParams.toString();
-    } else {
-      options.url = `${url}?${searchParams.toString()}`;
-    }
-  }
-  try {
-    const response = await fetch(method === 'GET' ? (options.url || url) : url, options);
-    const raw = await response.text();
-    let data;
-    try { data = JSON.parse(raw); } catch(e) { throw new Error(`Invalid JSON: ${raw.substring(0,200)}`); }
-    return data;
-  } catch (error) {
-    console.error(`Mustika API error (${endpoint}):`, error);
-    throw error;
-  }
-}
-
-async function getMustikaBalance() {
-  return await callMustikaApi('/api/saldo', 'GET');
-}
-
-async function validateBankAccount(tipe, kode, rek) {
-  return await callMustikaApi('/api/validate-bank', 'GET', { tipe, kode, rek });
-}
-
-async function requestWithdrawal(tipe, kode, rek, amount, otp = null) {
-  const params = { tipe, kode, rek, amount };
-  if (otp) params.otp = otp;
-  return await callMustikaApi('/api/wd', 'POST', params);
-}
-
-async function checkWithdrawalStatus(refNo) {
-  return await callMustikaApi('/api/cekwd', 'GET', { ref_no: refNo });
-}
-
-async function checkPaymentStatus(refNo) {
-  return await callMustikaApi('/api/cekpay', 'GET', { ref_no: refNo });
 }
 
 // ============================================================================
@@ -1048,7 +963,7 @@ function setupRoutes(app) {
       { url: '/register', priority: 0.8, changefreq: 'monthly', lastmod: now },
       { url: '/profile', priority: 0.7, changefreq: 'weekly', lastmod: now },
       { url: '/delete-account', priority: 0.5, changefreq: 'yearly', lastmod: now },
-      { url: '/payment-callback', priority: 0.6, changefreq: 'yearly', lastmod: now },
+      { url: '/payment/:orderId', priority: 0.7, changefreq: 'yearly', lastmod: now },
       { url: '/admin', priority: 0.6, changefreq: 'weekly', lastmod: now },
     ];
     const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1099,13 +1014,14 @@ Crawl-delay: 1
       };
       const amount = priceMap[panelType] || 500;
       const orderId = generateOrderId();
-      const redirectUrl = `${config.URL}/payment-callback`;
       
-      const mustikaRes = await createMustikaPayment(amount, redirectUrl, email, `${panelType.toUpperCase()} Panel`);
-      if (!mustikaRes.success) {
-        return res.status(500).json({ success: false, message: mustikaRes.error || 'Gagal membuat transaksi pembayaran' });
+      // Panggil API ClaidexPayment
+      const claidexRes = await createClaidexPayment(amount, orderId);
+      if (!claidexRes.success) {
+        return res.status(500).json({ success: false, message: claidexRes.error || 'Gagal membuat QR pembayaran' });
       }
       
+      // Simpan order dengan data payment
       const order = {
         order_id: orderId,
         email: email,
@@ -1114,11 +1030,17 @@ Crawl-delay: 1
         status: 'pending',
         created_at: new Date().toISOString(),
         panel_created: false,
-        ref_no: mustikaRes.ref_no
+        payment_reference: claidexRes.reference,
+        qrImage: claidexRes.qrImage,
+        payUrl: claidexRes.payUrl,
+        statusUrl: claidexRes.statusUrl,
+        expired: claidexRes.expired,
+        expired_time: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 menit dari sekarang
       };
       await addOrder(order);
       
-      res.json({ success: true, payment_url: mustikaRes.payment_link, order_id: orderId });
+      // Kirim order_id agar frontend redirect ke halaman pembayaran
+      res.json({ success: true, order_id: orderId });
     } catch (error) {
       console.error('Create order error:', error);
       await sendTelegramError(error, { route: '/api/create-order', body: req.body });
@@ -1126,11 +1048,7 @@ Crawl-delay: 1
     }
   });
 
-  // Endpoint check-payment (kompatibilitas)
-  app.get('/api/check-payment/:orderId/:amount', async (req, res) => {
-    res.json({ success: true, status: 'pending', message: 'Gunakan callback untuk konfirmasi pembayaran' });
-  });
-
+  // Endpoint untuk membuat panel setelah pembayaran sukses (dipanggil dari halaman payment)
   app.post('/api/create-panel', async (req, res) => {
     try {
       const { order_id } = req.body;
@@ -1161,106 +1079,10 @@ Crawl-delay: 1
       await updateOrder(order_id, { panel_created: true, status: 'paid', panel_data: panelResult, user_data: { email: order.email, username: username, password: randomPassword } });
       if (user) {
         const purchased = user.purchasedPanels || [];
-        purchased.push({ order_id: order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username: username, created_at: new Date().toISOString() });
+        purchased.push({ order_id: order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username: username, password: randomPassword, created_at: new Date().toISOString() });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
-      res.json({ success: true, panel: panelResult, user: { email: order.email, username: username }, message: 'Panel berhasil dibuat!' });
-    } catch (error) {
-      console.error('Create panel error:', error);
-      await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
-      res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-    }
-  });
-
-  // ==========================================================================
-  // PAYMENT CALLBACK (MENERIMA POST & GET)
-  // ==========================================================================
-  app.post('/payment-callback', async (req, res) => {
-    const { ref_no, status, order_id, reference } = req.body;
-    const usedRef = ref_no || reference;
-    if (!usedRef && !order_id) {
-      return res.status(400).send('Missing ref_no or order_id');
-    }
-    let order = null;
-    if (usedRef) {
-      const orders = await getOrders();
-      order = orders.find(o => o.ref_no === usedRef);
-    } else if (order_id) {
-      order = await findOrderById(order_id);
-    }
-    if (!order) {
-      return res.status(404).send('Order tidak ditemukan');
-    }
-    if (order.panel_created) {
-      return res.redirect(`/profile?order=${order.order_id}`);
-    }
-    // Pastikan status sukses dari Mustika (jika dikirim)
-    if (status && status !== 'success') {
-      return res.status(400).send('Payment not success');
-    }
-    await processSuccessfulPayment(order, res);
-  });
-
-  app.get('/payment-callback', async (req, res) => {
-    const { ref_no, order_id, status } = req.query;
-    if (!ref_no && !order_id) {
-      return res.redirect('/?error=missing_params');
-    }
-    let order = null;
-    if (ref_no) {
-      const orders = await getOrders();
-      order = orders.find(o => o.ref_no === ref_no);
-    } else if (order_id) {
-      order = await findOrderById(order_id);
-    }
-    if (!order) {
-      return res.redirect('/?error=order_not_found');
-    }
-    if (order.panel_created) {
-      return res.redirect(`/profile?order=${order.order_id}`);
-    }
-    await processSuccessfulPayment(order, res);
-  });
-
-  async function processSuccessfulPayment(order, res) {
-    try {
-      await updateOrder(order.order_id, { status: 'paid' });
       
-      const username = order.email.split('@')[0];
-      const randomPassword = generateRandomPassword(8);
-      const user = await findUserByEmail(order.email);
-      let pterodactylUserId = null;
-      let userResult = null;
-      const existingUser = await findPterodactylUserByEmail(order.email);
-      if (existingUser.success) {
-        pterodactylUserId = existingUser.userId;
-        userResult = { success: true, userId: pterodactylUserId };
-        if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
-      } else {
-        userResult = await createPterodactylUser(order.email, username, randomPassword);
-        if (!userResult.success) throw new Error('Gagal membuat user');
-        pterodactylUserId = userResult.userId;
-        if (user) await updateUser(user.id, { pterodactylUserId });
-      }
-      const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
-      if (!panelResult.success) throw new Error('Gagal membuat server');
-      await updateOrder(order.order_id, {
-        panel_created: true,
-        panel_data: panelResult,
-        user_data: { email: order.email, username: username, password: randomPassword }
-      });
-      if (user) {
-        const purchased = user.purchasedPanels || [];
-        purchased.push({
-          order_id: order.order_id,
-          panel_type: order.panel_type,
-          panel_url: panelResult.panelUrl,
-          username: username,
-          password: randomPassword,
-          created_at: new Date().toISOString()
-        });
-        await updateUser(user.id, { purchasedPanels: purchased });
-      }
       // Kirim notifikasi Telegram ke owner
       const now = new Date();
       const formatterDay = new Intl.DateTimeFormat('id-ID', { weekday: 'long', timeZone: 'Asia/Jakarta' });
@@ -1292,24 +1114,47 @@ Crawl-delay: 1
         });
       } catch (telegramError) { console.error('Telegram notification failed:', telegramError); }
       
-      const updatedOrder = await findOrderById(order.order_id);
-      const panel = updatedOrder.panel_data;
-      const userCred = updatedOrder.user_data;
-      res.send(generateSuccessPage(updatedOrder, panel, userCred));
+      res.json({ success: true, panel: panelResult, user: { email: order.email, username: username, password: randomPassword }, message: 'Panel berhasil dibuat!' });
     } catch (error) {
-      console.error('Callback processing error:', error);
-      res.send(`<html><body><h2>Error</h2><p>Hubungi admin. Order ID: ${order.order_id}</p><a href="/">Back</a></body></html>`);
+      console.error('Create panel error:', error);
+      await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
+      res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
-  }
+  });
 
-  function generateSuccessPage(order, panel, userCred) {
-    return `
+  // ==========================================================================
+  // HALAMAN PEMBAYARAN (QR CODE + POLLING)
+  // ==========================================================================
+  app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
+    const orderId = req.params.orderId;
+    const order = await findOrderById(orderId);
+    if (!order) {
+      return res.status(404).send('Order tidak ditemukan');
+    }
+    // Pastikan order milik user yang login
+    if (order.email !== req.user.email) {
+      return res.status(403).send('Akses ditolak');
+    }
+    if (order.panel_created) {
+      // Jika panel sudah dibuat, langsung redirect ke profil
+      return res.redirect('/profile');
+    }
+    // Hitung sisa waktu expired (5 menit)
+    const expiredTime = new Date(order.expired_time).getTime();
+    const now = Date.now();
+    let expired = false;
+    let remainingSeconds = Math.floor((expiredTime - now) / 1000);
+    if (remainingSeconds <= 0) {
+      expired = true;
+    }
+    
+    const html = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
-<title>Pembayaran Berhasil - ${SITE_NAME} Panel</title>
+<title>Pembayaran - ${SITE_NAME} Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <style>
@@ -1348,7 +1193,7 @@ background:rgba(0,0,0,0.65);
 z-index:-1;
 }
 .container{
-max-width:650px;
+max-width:550px;
 width:100%;
 background:rgba(15,25,45,0.6);
 backdrop-filter:blur(12px);
@@ -1356,11 +1201,7 @@ border-radius:32px;
 padding:35px;
 border:1px solid rgba(91,140,255,0.4);
 box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
-animation:fadeInUp 0.5s ease;
-}
-@keyframes fadeInUp{
-from{opacity:0;transform:translateY(30px)}
-to{opacity:1;transform:translateY(0)}
+text-align:center;
 }
 h1{
 font-family:'Orbitron';
@@ -1369,69 +1210,51 @@ background:linear-gradient(135deg,#fff,#5b8cff);
 background-clip:text;
 color:transparent;
 margin-bottom:15px;
-font-size:32px;
-text-align:center;
+font-size:28px;
 }
-.success-icon{
-text-align:center;
-font-size:70px;
-margin-bottom:10px;
-animation:pulse 1.5s infinite;
-}
-@keyframes pulse{
-0%,100%{transform:scale(1);opacity:1}
-50%{transform:scale(1.05);opacity:0.8}
-}
-.panel-card{
-background:rgba(0,0,0,0.5);
-border-radius:24px;
+.qr-container{
+background:#fff;
 padding:20px;
-margin:25px 0;
-backdrop-filter:blur(4px);
-border:1px solid rgba(91,140,255,0.3);
+border-radius:24px;
+display:inline-block;
+margin:20px 0;
+box-shadow:0 0 20px rgba(0,0,0,0.3);
 }
-.detail-row{
-display:flex;
-justify-content:space-between;
-align-items:center;
-padding:12px 0;
-border-bottom:1px solid rgba(255,255,255,0.1);
+.qr-img{
+width:250px;
+height:250px;
+object-fit:contain;
 }
-.detail-row:last-child{border-bottom:none}
-.detail-label{
-color:#8a9bb0;
-font-size:14px;
-font-weight:600;
+.status-badge{
+display:inline-block;
+padding:8px 20px;
+border-radius:40px;
+font-weight:bold;
+margin:15px 0;
 }
-.detail-value{
-font-family:'JetBrains Mono',monospace;
-font-size:14px;
-word-break:break-word;
-text-align:right;
-display:flex;
-align-items:center;
-gap:8px;
-}
-.copy-btn{
-background:#2a3a60;
-border:none;
-color:#fff;
-padding:4px 12px;
-border-radius:30px;
-cursor:pointer;
-font-size:11px;
-transition:0.2s;
-}
-.copy-btn:hover{
-background:#5b8cff;
+.status-pending{
+background:#ff9800;
 color:#000;
-transform:scale(1.02);
+}
+.status-paid{
+background:#4caf50;
+color:#fff;
+}
+.expired-text{
+color:#ff4444;
+font-weight:bold;
+}
+.countdown{
+font-size:24px;
+font-family:monospace;
+color:#ffcc00;
+margin:10px 0;
 }
 .btn-group{
 display:flex;
 gap:15px;
 justify-content:center;
-margin-top:25px;
+margin-top:20px;
 flex-wrap:wrap;
 }
 .btn{
@@ -1440,173 +1263,186 @@ align-items:center;
 gap:8px;
 background:linear-gradient(90deg,#1e3c72,#2a5298);
 color:#fff;
-padding:12px 25px;
+padding:10px 20px;
 border-radius:50px;
 text-decoration:none;
 font-weight:bold;
 transition:0.2s;
+border:none;
+cursor:pointer;
 }
 .btn:hover{
 transform:scale(1.02);
 box-shadow:0 0 20px rgba(91,140,255,0.5);
 }
-.refund-btn{
-background:linear-gradient(90deg,#d32f2f,#f44336);
+.btn-outline{
+background:transparent;
+border:1px solid #5b8cff;
+color:#5b8cff;
 }
-.refund-btn:hover{
-box-shadow:0 0 20px #f44336;
+.btn-outline:hover{
+background:#5b8cff;
+color:#000;
 }
 .back-link{
 display:block;
-text-align:center;
 margin-top:20px;
 color:#8a9bb0;
 text-decoration:none;
 }
-.back-link:hover{color:#5b8cff}
-.modal{
-display:none;
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.85);
-backdrop-filter:blur(8px);
-z-index:2000;
-align-items:center;
-justify-content:center;
-}
-.modal-content{
-background:#0b0f19;
-padding:30px;
-border-radius:28px;
-max-width:450px;
-width:90%;
-text-align:center;
-border:2px solid #5b8cff;
-box-shadow:0 0 40px rgba(91,140,255,0.4);
-animation:fadeInUp 0.3s;
-}
-.modal h2{
-font-family:'Orbitron';
-color:#5b8cff;
-margin-bottom:20px;
-font-size:1.5rem;
-}
-.modal-input-group{
-margin-bottom:20px;
-text-align:left;
-}
-.modal-input-group label{
-display:block;
-margin-bottom:6px;
-color:#8a9bb0;
-font-size:13px;
-}
-.modal-input-group input,.modal-input-group textarea{
-width:100%;
-padding:10px 15px;
-border-radius:30px;
-border:1px solid #1f2a40;
-background:#1a1f30;
-color:#fff;
-font-size:14px;
-}
-.modal-input-group textarea{
-min-height:80px;
-resize:vertical;
-}
-.warning-text{
-color:#ffaa00;
+.footer{
 font-size:12px;
-margin-top:-8px;
-margin-bottom:15px;
-}
-.modal-buttons{
-display:flex;
-gap:12px;
+color:#8a9bb0;
 margin-top:20px;
 }
-.modal-btn{
-flex:1;
-padding:12px;
-border-radius:40px;
-border:none;
-font-weight:bold;
-cursor:pointer;
-transition:0.2s;
+.loader{
+display:inline-block;
+width:20px;
+height:20px;
+border:2px solid #fff;
+border-top-color:#5b8cff;
+border-radius:50%;
+animation:spin 0.8s linear infinite;
 }
-.modal-btn.cancel{
-background:#2a3a60;
-color:#fff;
-}
-.modal-btn.confirm{
-background:linear-gradient(90deg,#1e3c72,#2a5298);
-color:#fff;
-}
-.toast{
-position:fixed;
-bottom:90px;
-left:50%;
-transform:translateX(-50%) translateY(20px);
-background:#2a3a60;
-border-radius:40px;
-padding:8px 18px;
-font-family:'JetBrains Mono',monospace;
-font-size:12px;
-color:#fff;
-z-index:3000;
-opacity:0;
-transition:all 0.3s;
-pointer-events:none;
-}
-.toast.show{
-opacity:1;
-transform:translateX(-50%) translateY(0);
-}
-@media(max-width:550px){
-.container{padding:20px}
-h1{font-size:24px}
-.detail-row{flex-direction:column;align-items:flex-start;gap:5px}
-.detail-value{text-align:left}
-}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div class="container">
-<div class="success-icon">✅</div>
-<h1>Pembayaran Berhasil!</h1>
-<p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
-<div class="panel-card">
-<div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${escapeHTML(userCred.username)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.username)}">Salin</button></div></div>
-<div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${escapeHTML(userCred.password)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.password)}">Salin</button></div></div>
-<div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${escapeHTML(userCred.email)}</code></div></div>
-<div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${escapeHTML(panel.name)}</div></div>
-<div class="detail-row"><span class="detail-label">💾 RAM</span><div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div></div>
-<div class="detail-row"><span class="detail-label">💿 Disk</span><div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div></div>
-<div class="detail-row"><span class="detail-label">⚙️ CPU</span><div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div></div>
+<h1><i class="fas fa-qrcode"></i> Scan QRIS</h1>
+<p>Lakukan pembayaran sebesar <strong>Rp ${order.amount.toLocaleString('id-ID')}</strong> dengan QRIS di bawah.</p>
+<div class="qr-container">
+<img src="${order.qrImage}" class="qr-img" alt="QR Code" id="qrImage">
+</div>
+<div id="statusArea">
+<span class="status-badge status-pending" id="statusText">⏳ Menunggu Pembayaran</span>
+<div id="countdownArea" class="countdown"></div>
 </div>
 <div class="btn-group">
-<a href="${panel.panelUrl}" class="btn" target="_blank"><i class="fas fa-external-link-alt"></i> Buka Panel</a>
-<button class="btn refund-btn" onclick="openRefundModal('${order.order_id}')"><i class="fas fa-undo-alt"></i> Minta Refund (20 Menit)</button>
+<button class="btn" id="checkManualBtn"><i class="fas fa-sync-alt"></i> Cek Status Manual</button>
+<a href="/profile" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Kembali ke Profil</a>
 </div>
-<a href="/" class="back-link">← Kembali ke Beranda</a>
+<div class="footer">
+⚠️ QR Code berlaku selama 5 menit. Jika expired, silakan buat order baru.
 </div>
-<div id="refundModal" class="modal"><div class="modal-content"><h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2><p>Silakan isi data berikut untuk pemrosesan refund.</p><div class="modal-input-group"><label>Nomor Dana</label><input type="text" id="danaNumber" placeholder="Contoh: 081234567890" required></div><div class="modal-input-group"><label>Nama Akun Dana</label><input type="text" id="danaName" placeholder="Nama sesuai rekening Dana" required></div><div class="modal-input-group"><label>Alasan Refund (Opsional)</label><textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea></div><div class="warning-text">⚠️ Admin tidak bertanggung jawab jika data yang dimasukkan salah. Pastikan data sesuai dengan akun Dana Anda.</div><div class="modal-buttons"><button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button><button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button></div></div></div>
-<div id="toast" class="toast">✅ Teks disalin!</div>
+<a href="/" class="back-link">← Beranda</a>
+</div>
 <script>
-let currentOrderId = null;
-function openRefundModal(orderId){currentOrderId=orderId;document.getElementById('danaNumber').value='';document.getElementById('danaName').value='';document.getElementById('refundReason').value='';document.getElementById('refundModal').style.display='flex';}
-function closeRefundModal(){document.getElementById('refundModal').style.display='none';currentOrderId=null;}
-document.getElementById('submitRefundBtn').addEventListener('click',async function(){const danaNumber=document.getElementById('danaNumber').value.trim();const danaName=document.getElementById('danaName').value.trim();const reason=document.getElementById('refundReason').value.trim();if(!danaNumber||!danaName){alert('Nomor Dana dan Nama Akun Dana harus diisi!');return;}if(!confirm('Apakah Anda yakin ingin mengajukan refund?\\n\\nNomor Dana: '+danaNumber+'\\nNama Akun: '+danaName+'\\nRefund hanya dapat diajukan dalam 20 menit setelah pembayaran.')) return;const btn=this;const originalText=btn.innerText;btn.innerText='Memproses...';btn.disabled=true;try{const res=await fetch('/api/refund-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:currentOrderId,dana_number:danaNumber,dana_name:danaName,reason:reason})});const data=await res.json();if(data.success){alert('Permintaan refund telah dikirim. Menunggu persetujuan admin.');window.location.href='/';}else{alert('Gagal: '+(data.message||'Unknown error'));closeRefundModal();}}catch(err){console.error(err);alert('Terjadi kesalahan, coba lagi nanti.');closeRefundModal();}finally{btn.innerText=originalText;btn.disabled=false;}});
-function showToast(){const toast=document.getElementById('toast');toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1500);}
-document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click',()=>{const text=btn.getAttribute('data-copy');navigator.clipboard.writeText(text).then(()=>showToast());});});
+const orderId = "${orderId}";
+const statusUrl = "${order.statusUrl}";
+let pollingInterval = null;
+let expired = ${expired};
+let remainingSeconds = ${remainingSeconds};
+
+function updateCountdownDisplay() {
+  const area = document.getElementById('countdownArea');
+  if (expired) {
+    area.innerHTML = '<span class="expired-text">⏰ QR Code telah kadaluarsa. Silakan buat order baru.</span>';
+    return;
+  }
+  if (remainingSeconds <= 0) {
+    expired = true;
+    area.innerHTML = '<span class="expired-text">⏰ QR Code telah kadaluarsa. Silakan buat order baru.</span>';
+    if (pollingInterval) clearInterval(pollingInterval);
+    document.getElementById('statusText').innerHTML = '❌ Kadaluarsa';
+    document.getElementById('statusText').classList.remove('status-pending');
+    document.getElementById('statusText').classList.add('expired-text');
+    return;
+  }
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  area.innerHTML = \`⏱️ Sisa waktu: \${minutes} menit \${seconds} detik\`;
+  remainingSeconds--;
+}
+
+// Countdown timer
+const countdownInterval = setInterval(() => {
+  if (!expired) {
+    if (remainingSeconds <= 0) {
+      expired = true;
+      updateCountdownDisplay();
+      if (pollingInterval) clearInterval(pollingInterval);
+    } else {
+      updateCountdownDisplay();
+    }
+  } else {
+    clearInterval(countdownInterval);
+  }
+}, 1000);
+updateCountdownDisplay();
+
+async function checkPaymentStatus(isManual = false) {
+  const statusTextEl = document.getElementById('statusText');
+  if (isManual) {
+    statusTextEl.innerHTML = '<span class="loader"></span> Mengecek...';
+  }
+  try {
+    const response = await fetch(statusUrl);
+    const data = await response.json();
+    if (data.paid === true) {
+      // Pembayaran berhasil
+      if (pollingInterval) clearInterval(pollingInterval);
+      clearInterval(countdownInterval);
+      statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Sedang membuat panel...';
+      statusTextEl.classList.remove('status-pending');
+      statusTextEl.classList.add('status-paid');
+      // Panggil API create panel
+      const createRes = await fetch('/api/create-panel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+      });
+      const createData = await createRes.json();
+      if (createData.success) {
+        // Redirect ke halaman sukses (profile dengan notifikasi)
+        window.location.href = '/profile?payment_success=' + orderId;
+      } else {
+        alert('Panel gagal dibuat: ' + (createData.message || 'Unknown error'));
+        window.location.href = '/profile';
+      }
+      return true;
+    } else {
+      if (isManual) {
+        statusTextEl.innerHTML = '⏳ Masih menunggu pembayaran';
+        setTimeout(() => {
+          if (statusTextEl.innerHTML === '⏳ Masih menunggu pembayaran') {
+            statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
+          }
+        }, 2000);
+      } else {
+        statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
+      }
+      return false;
+    }
+  } catch (err) {
+    console.error('Check status error:', err);
+    if (isManual) {
+      statusTextEl.innerHTML = '⚠️ Gagal mengecek status. Coba lagi nanti.';
+      setTimeout(() => {
+        if (statusTextEl.innerHTML === '⚠️ Gagal mengecek status. Coba lagi nanti.') {
+          statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
+        }
+      }, 3000);
+    }
+    return false;
+  }
+}
+
+// Mulai polling setiap 5 detik
+function startPolling() {
+  pollingInterval = setInterval(() => checkPaymentStatus(false), 5000);
+}
+startPolling();
+
+document.getElementById('checkManualBtn').addEventListener('click', () => {
+  checkPaymentStatus(true);
+});
 </script>
 </body>
 </html>
 `;
-  }
+    res.send(html);
+  });
 
   // ==========================================================================
   // API REFUND ORDER
@@ -1688,7 +1524,7 @@ document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click
   });
 
   // ==========================================================================
-  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
+  // API CANCEL ORDER (ADMIN)
   // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
@@ -2084,6 +1920,7 @@ errorDiv.style.display = 'block';
       await createUser({ email, password: hashedPassword, name, bio: '', photo: '' });
       await clearRegisterAttempts(clientIp);
       
+      // JEDA 5 DETIK SEBELUM REDIRECT KE LOGIN (memberi waktu GitHub sync)
       console.log('✅ Registrasi berhasil, menunggu 5 detik sebelum redirect ke login...');
       await new Promise(resolve => setTimeout(resolve, 5000));
       
@@ -2985,7 +2822,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD (DENGAN FITUR MUSTIKA)
+  // ADMIN DASHBOARD
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3459,59 +3296,32 @@ font-size: 0.8rem;
 <div class="stat-card"><h3><i class="fas fa-chart-line"></i> Kerugian</h3><div class="number">Rp ${totalLoss.toLocaleString('id-ID')}</div></div>
 <div class="stat-card"><h3><i class="fas fa-clock"></i> Refund Pending</h3><div class="number">${pendingRefunds}</div></div>
 </div>
-
-<!-- MUSTIKA BALANCE & WITHDRAWAL SECTION -->
 <div class="server-status-section">
 <div class="section-header">
-<h2><i class="fas fa-wallet"></i> MustikaPay Balance</h2>
-<button id="refreshBalanceBtn" class="action-btn" style="background:#2a5298;">Refresh</button>
+<h2><i class="fas fa-server"></i> Server Status</h2>
+<span class="last-update" id="lastUpdateTime">Memuat...</span>
 </div>
-<div id="mustikaBalance" style="display: flex; gap: 20px; justify-content: center;">
-<div class="stat-card"><h3>Available</h3><div class="number" id="balanceAvailable">-</div></div>
-<div class="stat-card"><h3>Pending</h3><div class="number" id="balancePending">-</div></div>
-</div>
-</div>
-<div class="server-status-section">
-<div class="section-header">
-<h2><i class="fas fa-exchange-alt"></i> Withdrawal / Validasi</h2>
-</div>
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+<div class="status-metrics">
 <div class="metric-card">
-<h3>Validasi Rekening</h3>
-<select id="valTipe"><option value="bank">Bank</option><option value="ewallet">E-Wallet</option></select>
-<input type="text" id="valKode" placeholder="Kode bank (014) / ewallet (dana,gopay)" style="width:100%; margin:8px 0;">
-<input type="text" id="valRek" placeholder="Nomor rekening / HP">
-<button id="validateBtn" class="action-btn" style="margin-top:10px;">Validasi</button>
-<div id="valResult" style="margin-top:10px; font-size:0.8rem;"></div>
+<div class="metric-header"><span>CPU Load</span><span id="cpuValue">0%</span></div>
+<div class="bar-container" id="cpuBars"></div>
 </div>
 <div class="metric-card">
-<h3>Penarikan Dana</h3>
-<select id="wdTipe"><option value="bank">Bank</option><option value="ewallet">E-Wallet</option></select>
-<input type="text" id="wdKode" placeholder="Kode bank / ewallet" style="width:100%; margin:8px 0;">
-<input type="text" id="wdRek" placeholder="Nomor rekening / HP">
-<input type="number" id="wdAmount" placeholder="Jumlah (min 10k)">
-<button id="wdStep1Btn" class="action-btn" style="margin-top:10px;">Request WD (Step 1)</button>
-<div id="wdOtpGroup" style="display:none; margin-top:10px;">
-<input type="text" id="wdOtp" placeholder="Kode OTP">
-<button id="wdStep2Btn" class="action-btn" style="background:#4caf50;">Kirim OTP</button>
+<div class="metric-header"><span>Memory Usage</span><span id="memValue">0 MiB</span></div>
+<div class="bar-container" id="memBars"></div>
 </div>
-<div id="wdResult" style="margin-top:10px; font-size:0.8rem;"></div>
+<div class="metric-card">
+<div class="metric-header"><span>Network Traffic</span><span id="netValue">0 B/s</span></div>
+<div class="bar-container" id="netBars"></div>
 </div>
 </div>
-<div style="margin-top:20px;">
-<h3>Cek Status WD</h3>
-<input type="text" id="statusWdRef" placeholder="ref_no WD">
-<button id="checkWdStatusBtn" class="action-btn">Cek Status</button>
-<div id="wdStatusResult"></div>
-</div>
-<div style="margin-top:20px;">
-<h3>Cek Status Pembayaran (Manual)</h3>
-<input type="text" id="checkPayRef" placeholder="ref_no (QR/VA)">
-<button id="checkPayBtn" class="action-btn">Cek Status</button>
-<div id="payStatusResult"></div>
+<div class="info-grid" id="serverInfoGrid">
+<div class="info-item"><div class="label">VERSION</div><div class="value" id="serverVersion">-</div></div>
+<div class="info-item"><div class="label">DEVELOPER</div><div class="value" id="serverDev">-</div></div>
+<div class="info-item"><div class="label">UPTIME</div><div class="value" id="serverUptime">-</div></div>
+<div class="info-item"><div class="label">SERVER TIME</div><div class="value" id="serverTime">-</div></div>
 </div>
 </div>
-
 <div class="section-title">
 <span><i class="fas fa-clock"></i> Verif cancel</span>
 <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchRefund" placeholder="Cari order/email..."></div>
@@ -3532,7 +3342,7 @@ ${refundRequests.map(r => `
 <td><button class="action-btn approve-btn" onclick="approveRefund('${r.order_id}')">Setujui Refund</button></td>
 </tr>
 `).join('')}
-${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td>' : ''}
+${refundRequests.length === 0 ? '<tr><td colspan="6">Tidak ada permintaan refund</td></tr>' : ''}
 </tbody>
 </table>
 </div>
@@ -3559,7 +3369,7 @@ ${userData.map(u => `
 <td class="user-bio" title="${escapeHTML(u.bio)}">${escapeHTML(u.bio)}</td>
 </tr>
 `).join('')}
-${userData.length === 0 ? '<tr><td colspan="9">Belum ada user</td>' : ''}
+${userData.length === 0 ? '<td><td colspan="9">Belum ada user</td></tr>' : ''}
 </tbody>
 </table>
 </div>
@@ -3592,7 +3402,7 @@ return `
 </tr>
 `;
 }).join('')}
-${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td>' : ''}
+${sortedOrders.length === 0 ? '<tr><td colspan="7">Belum ada order</td></tr>' : ''}
 </tbody>
 </table>
 </div>
@@ -3748,95 +3558,6 @@ console.error(err);
 alert('Terjadi kesalahan, coba lagi nanti.');
 }
 }
-// ========== MUSTIKA FUNCTIONS ==========
-async function refreshBalance() {
-try {
-const res = await fetch('/admin/mustika-balance');
-const data = await res.json();
-if (data.username) {
-document.getElementById('balanceAvailable').innerText = data.balance_available?.toLocaleString('id-ID') || '0';
-document.getElementById('balancePending').innerText = data.balance_pending?.toLocaleString('id-ID') || '0';
-} else {
-document.getElementById('balanceAvailable').innerText = 'Error';
-document.getElementById('balancePending').innerText = 'Error';
-}
-} catch(e) {
-document.getElementById('balanceAvailable').innerText = 'Error';
-document.getElementById('balancePending').innerText = 'Error';
-}
-}
-document.getElementById('refreshBalanceBtn').addEventListener('click', refreshBalance);
-refreshBalance();
-document.getElementById('validateBtn').addEventListener('click', async () => {
-const tipe = document.getElementById('valTipe').value;
-const kode = document.getElementById('valKode').value;
-const rek = document.getElementById('valRek').value;
-if (!kode || !rek) { alert('Isi kode dan rekening'); return; }
-const res = await fetch('/admin/validate-bank', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ tipe, kode, rek })
-});
-const data = await res.json();
-if (data.account_name) document.getElementById('valResult').innerHTML = '<span style="color: #4caf50;">✅ ' + data.account_name + '</span>';
-else document.getElementById('valResult').innerHTML = '<span style="color: #f44336;">❌ Gagal: ' + (data.error || 'Tidak ditemukan') + '</span>';
-});
-let wdRefNo = null;
-document.getElementById('wdStep1Btn').addEventListener('click', async () => {
-const tipe = document.getElementById('wdTipe').value;
-const kode = document.getElementById('wdKode').value;
-const rek = document.getElementById('wdRek').value;
-const amount = document.getElementById('wdAmount').value;
-if (!kode || !rek || !amount) { alert('Isi semua field'); return; }
-const res = await fetch('/admin/withdraw', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ tipe, kode, rek, amount })
-});
-const data = await res.json();
-if (data.status === 'success' && data.ref_no) {
-wdRefNo = data.ref_no;
-document.getElementById('wdOtpGroup').style.display = 'block';
-document.getElementById('wdResult').innerHTML = '✅ OTP dikirim, masukkan kode OTP.';
-} else {
-document.getElementById('wdResult').innerHTML = '❌ Gagal: ' + (data.message || data.error);
-}
-});
-document.getElementById('wdStep2Btn').addEventListener('click', async () => {
-const tipe = document.getElementById('wdTipe').value;
-const kode = document.getElementById('wdKode').value;
-const rek = document.getElementById('wdRek').value;
-const amount = document.getElementById('wdAmount').value;
-const otp = document.getElementById('wdOtp').value;
-if (!otp) { alert('Masukkan OTP'); return; }
-const res = await fetch('/admin/withdraw', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ tipe, kode, rek, amount, otp })
-});
-const data = await res.json();
-if (data.status === 'success') {
-document.getElementById('wdResult').innerHTML = '✅ Berhasil! Ref: ' + data.ref_no;
-document.getElementById('wdOtpGroup').style.display = 'none';
-refreshBalance();
-} else {
-document.getElementById('wdResult').innerHTML = '❌ Gagal: ' + (data.message || data.error);
-}
-});
-document.getElementById('checkWdStatusBtn').addEventListener('click', async () => {
-const ref = document.getElementById('statusWdRef').value;
-if (!ref) { alert('Masukkan ref_no'); return; }
-const res = await fetch('/admin/withdraw-status?ref_no=' + encodeURIComponent(ref));
-const data = await res.json();
-document.getElementById('wdStatusResult').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-});
-document.getElementById('checkPayBtn').addEventListener('click', async () => {
-const ref = document.getElementById('checkPayRef').value;
-if (!ref) { alert('Masukkan ref_no'); return; }
-const res = await fetch('/admin/check-payment?ref_no=' + encodeURIComponent(ref));
-const data = await res.json();
-document.getElementById('payStatusResult').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-});
 </script>
 </body>
 </html>
@@ -3845,7 +3566,7 @@ document.getElementById('payStatusResult').innerHTML = '<pre>' + JSON.stringify(
   });
 
   // ==========================================================================
-  // HALAMAN UTAMA (HOME) – tidak diubah (tetap seperti semula)
+  // HALAMAN UTAMA (HOME)
   // ==========================================================================
   app.get('/', async (req, res) => {
     const isLoggedIn = req.isAuthenticated();
@@ -4577,7 +4298,6 @@ ${isLoggedIn ? `
 </div>
 <script>
 const isLoggedIn = ${isLoggedIn};
-// Tidak ada lagi partikel canvas, background video sudah ada
 const menuBtn = document.getElementById('menuBtn');
 const statusPanel = document.getElementById('statusPanel');
 const pageContainer = document.getElementById('pageContainer');
@@ -4725,7 +4445,8 @@ credentials: 'include'
 });
 const data=await response.json();
 if(data.success){
-window.location.href=data.payment_url;
+// Redirect ke halaman pembayaran dengan order_id
+window.location.href = '/payment/' + data.order_id;
 } else {
 alert(data.message||'Gagal membuat order');
 closeOrderModal();
@@ -4824,62 +4545,6 @@ async function initGithub() {
   [owner, repo] = GITHUB_REPO.split('/');
   console.log(`GitHub siap: owner=${owner}, repo=${repo}, branch=${GITHUB_BRANCH}, path=${GITHUB_PATH}`);
 }
-
-// ============================================================================
-// ADMIN ENDPOINTS UNTUK MUSTIKA API
-// ============================================================================
-app.get('/admin/mustika-balance', isAuthenticated, isAdmin, async (req, res) => {
-  try {
-    const balance = await getMustikaBalance();
-    res.json(balance);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/admin/validate-bank', isAuthenticated, isAdmin, async (req, res) => {
-  const { tipe, kode, rek } = req.body;
-  if (!tipe || !kode || !rek) return res.status(400).json({ error: 'Parameter tidak lengkap' });
-  try {
-    const result = await validateBankAccount(tipe, kode, rek);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/admin/withdraw', isAuthenticated, isAdmin, async (req, res) => {
-  const { tipe, kode, rek, amount, otp } = req.body;
-  if (!tipe || !kode || !rek || !amount) return res.status(400).json({ error: 'Parameter tidak lengkap' });
-  try {
-    const result = await requestWithdrawal(tipe, kode, rek, amount, otp);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/admin/withdraw-status', isAuthenticated, isAdmin, async (req, res) => {
-  const { ref_no } = req.query;
-  if (!ref_no) return res.status(400).json({ error: 'ref_no diperlukan' });
-  try {
-    const result = await checkWithdrawalStatus(ref_no);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/admin/check-payment', isAuthenticated, isAdmin, async (req, res) => {
-  const { ref_no } = req.query;
-  if (!ref_no) return res.status(400).json({ error: 'ref_no diperlukan' });
-  try {
-    const result = await checkPaymentStatus(ref_no);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============================================================================
 // START SERVER
