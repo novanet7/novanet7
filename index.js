@@ -1132,7 +1132,7 @@ Crawl-delay: 1
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - BACKGROUND TRANSPARAN
+  // HALAMAN PEMBAYARAN (QR CODE + POLLING + DOWNLOAD) - DENGAN PROXY CORS
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1271,14 +1271,18 @@ text-align:center;
   background: #5b8cff;
   color: #000;
 }
-/* QR Container - transparan, blur, tanpa background putih */
+/* QR Container - transparan, blur, dan ditengah */
+.qr-wrapper {
+  display: flex;
+  justify-content: center;
+  margin: 15px 0;
+}
 .qr-container{
 background: rgba(255, 255, 255, 0.1);
 backdrop-filter: blur(8px);
 border-radius: 24px;
 padding: 20px;
 display: inline-block;
-margin: 15px auto;
 text-align: center;
 box-shadow: 0 8px 20px rgba(0,0,0,0.3);
 border: 1px solid rgba(91,140,255,0.3);
@@ -1289,7 +1293,6 @@ height:250px;
 object-fit:contain;
 border-radius: 16px;
 }
-/* Info panel kecil di bawah QR */
 .payment-info {
   background: rgba(0,0,0,0.5);
   border-radius: 20px;
@@ -1418,10 +1421,11 @@ margin-top:10px;
 <img src="https://files.catbox.moe/u47x3d.png" alt="${SITE_NAME}">
 </div>
 <h1><i class="fas fa-qrcode"></i> Scan QRIS</h1>
+<div class="qr-wrapper">
 <div class="qr-container">
 <img src="${order.qrImage}" class="qr-img" alt="QR Code" id="qrImage">
 </div>
-<!-- Info panel kecil -->
+</div>
 <div class="payment-info">
 <div class="left">
 <div class="item"><span class="label">📦</span><span class="value">${order.panel_type.toUpperCase()}</span></div>
@@ -1447,7 +1451,6 @@ margin-top:10px;
 </div>
 <script>
 const orderId = "${orderId}";
-const statusUrl = "${order.statusUrl}";
 let pollingInterval = null;
 let expired = ${expired};
 let remainingSeconds = ${remainingSeconds};
@@ -1509,9 +1512,10 @@ async function checkPaymentStatus(isManual = false) {
     statusTextEl.innerHTML = '<span class="loader"></span> Mengecek...';
   }
   try {
-    const response = await fetch(statusUrl);
+    const response = await fetch('/api/check-payment-status/' + orderId);
     if (!response.ok) {
-      throw new Error(\`HTTP \${response.status}\`);
+      const errorData = await response.json();
+      throw new Error(errorData.error || \`HTTP \${response.status}\`);
     }
     const data = await response.json();
     console.log('[CheckStatus] Response:', data);
@@ -1577,9 +1581,9 @@ document.getElementById('checkManualBtn').addEventListener('click', () => {
 });
 
 document.getElementById('downloadQrBtn').addEventListener('click', async () => {
-  const qrUrl = document.getElementById('qrImage').src;
   try {
-    const response = await fetch(qrUrl);
+    const response = await fetch('/api/download-qr/' + orderId);
+    if (!response.ok) throw new Error('Gagal download');
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1591,7 +1595,9 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     window.URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Download error:', err);
-    alert('Gagal download QR, coba klik kanan pada gambar dan pilih "Simpan gambar sebagai"');
+    const qrUrl = document.getElementById('qrImage').src;
+    window.open(qrUrl, '_blank');
+    alert('Gagal download otomatis, gambar dibuka di tab baru. Klik kanan dan pilih "Simpan gambar sebagai"');
   }
 });
 </script>
@@ -1599,6 +1605,50 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
 </html>
 `;
     res.send(html);
+  });
+
+  // ==========================================================================
+  // PROXY ENDPOINT UNTUK CEK STATUS PEMBAYARAN (MENGHINDARI CORS)
+  // ==========================================================================
+  app.get('/api/check-payment-status/:orderId', isAuthenticated, async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      const order = await findOrderById(orderId);
+      if (!order) return res.status(404).json({ error: 'Order tidak ditemukan' });
+      if (order.email !== req.user.email) return res.status(403).json({ error: 'Akses ditolak' });
+      const statusUrl = order.statusUrl;
+      if (!statusUrl) return res.status(400).json({ error: 'Status URL tidak tersedia' });
+      const response = await fetch(statusUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      console.error('Proxy check status error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==========================================================================
+  // PROXY ENDPOINT UNTUK DOWNLOAD QR (MENGHINDARI CORS)
+  // ==========================================================================
+  app.get('/api/download-qr/:orderId', isAuthenticated, async (req, res) => {
+    try {
+      const orderId = req.params.orderId;
+      const order = await findOrderById(orderId);
+      if (!order) return res.status(404).json({ error: 'Order tidak ditemukan' });
+      if (order.email !== req.user.email) return res.status(403).json({ error: 'Akses ditolak' });
+      const qrUrl = order.qrImage;
+      if (!qrUrl) return res.status(400).json({ error: 'QR URL tidak tersedia' });
+      const response = await fetch(qrUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await response.buffer();
+      res.set('Content-Type', 'image/png');
+      res.set('Content-Disposition', `attachment; filename="qris_${orderId}.png"`);
+      res.send(buffer);
+    } catch (err) {
+      console.error('Proxy download QR error:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ==========================================================================
