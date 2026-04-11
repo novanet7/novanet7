@@ -190,5 +190,21 @@
     "expired": "5 minutes",
     "expired_time": "2026-04-11T20:54:20.748Z",
     "cancelled_at": "2026-04-11T20:52:03.327Z"
+  },
+  {
+    "order_id": "ORDER_1775941053274_7OLZWPGB3",
+    "email": "novanet403@gmail.com",
+    "panel_type": "1gb",
+    "amount": 100,
+    "status": "cancel",
+    "created_at": "2026-04-11T20:57:37.111Z",
+    "panel_created": false,
+    "payment_reference": "QR-15-1775941054",
+    "qrImage": "https://claidexpayment.host/qr/QR-15-1775941054.png",
+    "payUrl": "https://claidexpayment.host/pay.php?ref=QR-15-1775941054",
+    "statusUrl": "https://claidexpayment.host/check-status.php?ref=QR-15-1775941054",
+    "expired": "5 minutes",
+    "expired_time": "2026-04-11T21:02:37.111Z",
+    "cancelled_at": "2026-04-11T20:59:49.659Z"
   }
 ]
