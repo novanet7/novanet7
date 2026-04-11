@@ -1248,22 +1248,30 @@ margin-bottom:10px;
 font-size:26px;
 text-align:center;
 }
-.order-details{
-background:rgba(0,0,0,0.4);
-border-radius:20px;
-padding:15px;
-margin-bottom:20px;
-border:1px solid rgba(91,140,255,0.3);
+/* Header atas dengan tombol */
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-bottom: 15px;
 }
-.detail-row{
-display:flex;
-justify-content:space-between;
-padding:8px 0;
-border-bottom:1px solid rgba(255,255,255,0.1);
+.top-actions a {
+  color: #5b8cff;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.4);
+  padding: 6px 14px;
+  border-radius: 40px;
+  transition: 0.2s;
 }
-.detail-row:last-child{border-bottom:none}
-.detail-label{color:#8a9bb0;font-weight:600}
-.detail-value{color:#fff;font-weight:500}
+.top-actions a:hover {
+  background: #5b8cff;
+  color: #000;
+}
 .qr-container{
 background:#fff;
 padding:20px;
@@ -1278,6 +1286,50 @@ width:250px;
 height:250px;
 object-fit:contain;
 }
+/* Info panel kecil di bawah QR */
+.payment-info {
+  background: rgba(0,0,0,0.5);
+  border-radius: 20px;
+  padding: 12px 16px;
+  margin: 10px 0 20px;
+  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.payment-info .left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.payment-info .item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.payment-info .item .label {
+  color: #8a9bb0;
+  font-weight: 600;
+}
+.payment-info .item .value {
+  color: #fff;
+  font-weight: 500;
+}
+.countdown-badge {
+  font-family: monospace;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  border-radius: 40px;
+  background: rgba(0,0,0,0.5);
+}
+/* Warna countdown */
+.countdown-badge.high { color: #4caf50; text-shadow: 0 0 5px #4caf50; }
+.countdown-badge.medium { color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
+.countdown-badge.low { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
 .status-badge{
 display:inline-block;
 padding:8px 20px;
@@ -1296,13 +1348,6 @@ color:#fff;
 .expired-text{
 color:#ff4444;
 font-weight:bold;
-}
-.countdown{
-font-size:28px;
-font-family:monospace;
-color:#ffcc00;
-margin:10px 0;
-letter-spacing:2px;
 }
 .btn-group{
 display:flex;
@@ -1338,13 +1383,6 @@ color:#5b8cff;
 background:#5b8cff;
 color:#000;
 }
-.back-link{
-display:block;
-margin-top:20px;
-color:#8a9bb0;
-text-decoration:none;
-text-align:center;
-}
 .footer{
 font-size:12px;
 color:#8a9bb0;
@@ -1370,34 +1408,39 @@ margin-top:10px;
 </head>
 <body>
 <div class="container">
+<div class="top-actions">
+<a href="/"><i class="fas fa-home"></i> Beranda</a>
+<a href="/profile"><i class="fas fa-user"></i> Profil</a>
+</div>
 <div class="logo-payment">
 <img src="https://files.catbox.moe/u47x3d.png" alt="${SITE_NAME}">
 </div>
 <h1><i class="fas fa-qrcode"></i> Scan QRIS</h1>
-<div class="order-details">
-<div class="detail-row"><span class="detail-label">📦 Paket</span><span class="detail-value">${order.panel_type.toUpperCase()}</span></div>
-<div class="detail-row"><span class="detail-label">💾 RAM</span><span class="detail-value">${specs.ram}</span></div>
-<div class="detail-row"><span class="detail-label">💿 Disk</span><span class="detail-value">${specs.disk}</span></div>
-<div class="detail-row"><span class="detail-label">⚙️ CPU</span><span class="detail-value">${specs.cpu}</span></div>
-<div class="detail-row"><span class="detail-label">💰 Harga</span><span class="detail-value">Rp ${order.amount.toLocaleString('id-ID')}</span></div>
-<div class="detail-row"><span class="detail-label">📧 Email</span><span class="detail-value">${escapeHTML(order.email)}</span></div>
-</div>
 <div class="qr-container">
 <img src="${order.qrImage}" class="qr-img" alt="QR Code" id="qrImage">
 </div>
-<div id="statusArea">
+<!-- Info panel kecil -->
+<div class="payment-info">
+<div class="left">
+<div class="item"><span class="label">📦</span><span class="value">${order.panel_type.toUpperCase()}</span></div>
+<div class="item"><span class="label">💾</span><span class="value">${specs.ram}</span></div>
+<div class="item"><span class="label">💿</span><span class="value">${specs.disk}</span></div>
+<div class="item"><span class="label">⚙️</span><span class="value">${specs.cpu}</span></div>
+<div class="item"><span class="label">💰</span><span class="value">Rp ${order.amount.toLocaleString('id-ID')}</span></div>
+<div class="item"><span class="label">📧</span><span class="value" style="max-width:150px; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(order.email)}</span></div>
+</div>
+<div class="countdown-badge" id="countdownBadge">--:--</div>
+</div>
+<div id="statusArea" style="text-align:center;">
 <span class="status-badge status-pending" id="statusText">⏳ Menunggu Pembayaran</span>
-<div id="countdownArea" class="countdown"></div>
 </div>
 <div class="btn-group">
 <button class="btn" id="downloadQrBtn"><i class="fas fa-download"></i> Download QR</button>
 <button class="btn" id="checkManualBtn"><i class="fas fa-sync-alt"></i> Cek Status Manual</button>
-<a href="/profile" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Kembali ke Profil</a>
 </div>
 <div class="warning">
 ⚠️ QR Code berlaku selama 5 menit. Jika expired, silakan buat order baru.
 </div>
-<a href="/" class="back-link">← Beranda</a>
 <div class="footer">Pembayaran akan dikonfirmasi otomatis dalam beberapa detik setelah transfer.</div>
 </div>
 <script>
@@ -1407,24 +1450,41 @@ let pollingInterval = null;
 let expired = ${expired};
 let remainingSeconds = ${remainingSeconds};
 
+const countdownBadge = document.getElementById('countdownBadge');
+const statusTextEl = document.getElementById('statusText');
+
 function updateCountdownDisplay() {
-  const area = document.getElementById('countdownArea');
   if (expired) {
-    area.innerHTML = '<span class="expired-text">⏰ QR Code telah kadaluarsa. Silakan buat order baru.</span>';
+    countdownBadge.innerText = '00:00';
+    countdownBadge.className = 'countdown-badge low';
+    if (pollingInterval) clearInterval(pollingInterval);
+    statusTextEl.innerHTML = '❌ Kadaluarsa';
+    statusTextEl.classList.remove('status-pending');
+    statusTextEl.classList.add('expired-text');
     return;
   }
   if (remainingSeconds <= 0) {
     expired = true;
-    area.innerHTML = '<span class="expired-text">⏰ QR Code telah kadaluarsa. Silakan buat order baru.</span>';
+    countdownBadge.innerText = '00:00';
+    countdownBadge.className = 'countdown-badge low';
     if (pollingInterval) clearInterval(pollingInterval);
-    document.getElementById('statusText').innerHTML = '❌ Kadaluarsa';
-    document.getElementById('statusText').classList.remove('status-pending');
-    document.getElementById('statusText').classList.add('expired-text');
+    statusTextEl.innerHTML = '❌ Kadaluarsa';
+    statusTextEl.classList.remove('status-pending');
+    statusTextEl.classList.add('expired-text');
     return;
   }
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
-  area.innerHTML = \`⏱️ Sisa waktu: \${minutes.toString().padStart(2,'0')} menit \${seconds.toString().padStart(2,'0')} detik\`;
+  const timeStr = \`\${minutes.toString().padStart(2,'0')}:\${seconds.toString().padStart(2,'0')}\`;
+  countdownBadge.innerText = timeStr;
+  // Atur warna berdasarkan sisa waktu
+  if (remainingSeconds > 120) { // lebih dari 2 menit -> hijau
+    countdownBadge.className = 'countdown-badge high';
+  } else if (remainingSeconds > 60) { // 1-2 menit -> kuning
+    countdownBadge.className = 'countdown-badge medium';
+  } else { // kurang dari 1 menit -> merah
+    countdownBadge.className = 'countdown-badge low';
+  }
   remainingSeconds--;
 }
 
@@ -1444,7 +1504,6 @@ const countdownInterval = setInterval(() => {
 updateCountdownDisplay();
 
 async function checkPaymentStatus(isManual = false) {
-  const statusTextEl = document.getElementById('statusText');
   if (isManual) {
     statusTextEl.innerHTML = '<span class="loader"></span> Mengecek...';
   }
@@ -1456,16 +1515,13 @@ async function checkPaymentStatus(isManual = false) {
     const data = await response.json();
     console.log('[CheckStatus] Response:', data);
     
-    // Cek apakah pembayaran sudah berhasil berdasarkan field "paid"
     if (data.paid === true) {
-      // Hentikan polling dan countdown
       if (pollingInterval) clearInterval(pollingInterval);
       clearInterval(countdownInterval);
       statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Sedang membuat panel...';
       statusTextEl.classList.remove('status-pending');
       statusTextEl.classList.add('status-paid');
       
-      // Panggil API create panel
       const createRes = await fetch('/api/create-panel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1480,7 +1536,6 @@ async function checkPaymentStatus(isManual = false) {
       }
       return true;
     } else if (data.status === 'pending' || data.paid === false) {
-      // Masih pending
       if (isManual) {
         statusTextEl.innerHTML = '⏳ Pembayaran masih pending. Silakan tunggu atau cek lagi nanti.';
         setTimeout(() => {
@@ -1493,7 +1548,6 @@ async function checkPaymentStatus(isManual = false) {
       }
       return false;
     } else {
-      // Status tidak dikenal
       throw new Error('Respons tidak dikenal: ' + JSON.stringify(data));
     }
   } catch (err) {
@@ -1506,7 +1560,6 @@ async function checkPaymentStatus(isManual = false) {
         }
       }, 5000);
     } else {
-      // Pada polling, hanya log error, jangan ubah tampilan agar tidak mengganggu
       console.error('Polling error:', err.message);
     }
     return false;
@@ -1518,33 +1571,28 @@ function startPolling() {
 }
 startPolling();
 
-// Tombol cek manual
 document.getElementById('checkManualBtn').addEventListener('click', () => {
   checkPaymentStatus(true);
 });
 
-// Tombol download QR - menggunakan link langsung agar tidak kena CORS
-document.getElementById('downloadQrBtn').addEventListener('click', () => {
+// Download QR: fetch gambar lalu download sebagai file
+document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   const qrUrl = document.getElementById('qrImage').src;
-  // Cara termudah: buka link di tab baru agar user bisa simpan sendiri
-  // Atau gunakan a.href download (tidak selalu bekerja karena CORS)
-  // Karena gambar dari domain berbeda, kita beri opsi buka di tab baru
-  window.open(qrUrl, '_blank');
-  // Tampilkan notifikasi
-  const toast = document.createElement('div');
-  toast.innerText = 'Gambar QR dibuka di tab baru. Klik kanan dan pilih "Simpan gambar sebagai..."';
-  toast.style.position = 'fixed';
-  toast.style.bottom = '20px';
-  toast.style.left = '50%';
-  toast.style.transform = 'translateX(-50%)';
-  toast.style.backgroundColor = '#2a3a60';
-  toast.style.color = '#fff';
-  toast.style.padding = '10px 20px';
-  toast.style.borderRadius = '30px';
-  toast.style.fontSize = '12px';
-  toast.style.zIndex = '9999';
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  try {
+    const response = await fetch(qrUrl);
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'qris_${orderId}.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Download error:', err);
+    alert('Gagal download QR, coba klik kanan pada gambar dan pilih "Simpan gambar sebagai"');
+  }
 });
 </script>
 </body>
