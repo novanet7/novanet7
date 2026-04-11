@@ -899,9 +899,20 @@ async function deletePterodactylServer(serverId) {
 async function createClaidexPayment(amount, orderId) {
   const url = `https://api.claidexpayment.host/create-qr.php?api_key=${CLAIDEX_API_KEY}&amount=${amount}&order_id=${orderId}`;
   try {
+    console.log(`[Claidex] 🔄 Membuat QR untuk order ${orderId}, amount ${amount}`);
     const response = await fetch(url);
+    
+    // Cek status HTTP
+    if (!response.ok) {
+      console.error(`[Claidex] ❌ HTTP error: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const data = await response.json();
+    console.log('[Claidex] 📦 Response dari API:', JSON.stringify(data, null, 2));
+    
     if (data.success === true) {
+      console.log('[Claidex] ✅ QR berhasil dibuat, reference:', data.reference);
       return {
         success: true,
         reference: data.reference,
@@ -912,10 +923,13 @@ async function createClaidexPayment(amount, orderId) {
         amount: data.amount
       };
     } else {
-      throw new Error(data.message || 'Gagal membuat QR pembayaran');
+      const errMsg = data.message || 'Gagal membuat QR pembayaran (unknown reason)';
+      console.error('[Claidex] ❌ API mengembalikan error:', errMsg);
+      throw new Error(errMsg);
     }
   } catch (error) {
-    console.error('Create Claidex Payment error:', error);
+    console.error('[Claidex] ❌ Exception:', error.message);
+    // Kembalikan object error agar tidak throw ke route
     return { success: false, error: error.message };
   }
 }
@@ -994,59 +1008,63 @@ Crawl-delay: 1
   // API ROUTES
   // ==========================================================================
   app.post('/api/create-order', isAuthenticated, async (req, res) => {
-    try {
-      const { panel_type, paneltype } = req.body;
-      const panelType = panel_type || paneltype;
-      if (!panelType) return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
-      const email = req.user.email;
-      const priceMap = {
-        '1gb': config.PRICE_1GB || 500,
-        '2gb': config.PRICE_2GB || 500,
-        '3gb': config.PRICE_3GB || 500,
-        '4gb': config.PRICE_4GB || 500,
-        '5gb': config.PRICE_5GB || 500,
-        '6gb': config.PRICE_6GB || 500,
-        '7gb': config.PRICE_7GB || 500,
-        '8gb': config.PRICE_8GB || 500,
-        '9gb': config.PRICE_9GB || 500,
-        '10gb': config.PRICE_10GB || 500,
-        'unli': config.PRICE_UNLI || 500
-      };
-      const amount = priceMap[panelType] || 500;
-      const orderId = generateOrderId();
-      
-      // Panggil API ClaidexPayment
-      const claidexRes = await createClaidexPayment(amount, orderId);
-      if (!claidexRes.success) {
-        return res.status(500).json({ success: false, message: claidexRes.error || 'Gagal membuat QR pembayaran' });
-      }
-      
-      // Simpan order dengan data payment
-      const order = {
-        order_id: orderId,
-        email: email,
-        panel_type: panelType,
-        amount: amount,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        panel_created: false,
-        payment_reference: claidexRes.reference,
-        qrImage: claidexRes.qrImage,
-        payUrl: claidexRes.payUrl,
-        statusUrl: claidexRes.statusUrl,
-        expired: claidexRes.expired,
-        expired_time: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 menit dari sekarang
-      };
-      await addOrder(order);
-      
-      // Kirim order_id agar frontend redirect ke halaman pembayaran
-      res.json({ success: true, order_id: orderId });
-    } catch (error) {
-      console.error('Create order error:', error);
-      await sendTelegramError(error, { route: '/api/create-order', body: req.body });
-      res.status(500).json({ success: false, message: 'Internal server error' });
+  try {
+    const { panel_type, paneltype } = req.body;
+    const panelType = panel_type || paneltype;
+    if (!panelType) {
+      return res.status(400).json({ success: false, message: 'Tipe panel harus diisi' });
     }
-  });
+    
+    const email = req.user.email;
+    const priceMap = {
+      '1gb': config.PRICE_1GB || 500,
+      '2gb': config.PRICE_2GB || 500,
+      '3gb': config.PRICE_3GB || 500,
+      '4gb': config.PRICE_4GB || 500,
+      '5gb': config.PRICE_5GB || 500,
+      '6gb': config.PRICE_6GB || 500,
+      '7gb': config.PRICE_7GB || 500,
+      '8gb': config.PRICE_8GB || 500,
+      '9gb': config.PRICE_9GB || 500,
+      '10gb': config.PRICE_10GB || 500,
+      'unli': config.PRICE_UNLI || 500
+    };
+    const amount = priceMap[panelType] || 500;
+    const orderId = generateOrderId();
+    
+    console.log(`[CreateOrder] Membuat order ${orderId} untuk ${email}, paket ${panelType}, amount ${amount}`);
+    
+    const claidexRes = await createClaidexPayment(amount, orderId);
+    if (!claidexRes.success) {
+      console.error('[CreateOrder] Gagal membuat QR:', claidexRes.error);
+      return res.status(500).json({ success: false, message: claidexRes.error || 'Gagal membuat QR pembayaran' });
+    }
+    
+    const order = {
+      order_id: orderId,
+      email: email,
+      panel_type: panelType,
+      amount: amount,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      panel_created: false,
+      payment_reference: claidexRes.reference,
+      qrImage: claidexRes.qrImage,
+      payUrl: claidexRes.payUrl,
+      statusUrl: claidexRes.statusUrl,
+      expired: claidexRes.expired,
+      expired_time: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+    };
+    await addOrder(order);
+    console.log(`[CreateOrder] Order ${orderId} berhasil disimpan, redirect ke /payment/${orderId}`);
+    
+    res.json({ success: true, order_id: orderId });
+  } catch (error) {
+    console.error('[CreateOrder] Unexpected error:', error);
+    await sendTelegramError(error, { route: '/api/create-order', body: req.body });
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
 
   // Endpoint untuk membuat panel setelah pembayaran sukses (dipanggil dari halaman payment)
   app.post('/api/create-panel', async (req, res) => {
