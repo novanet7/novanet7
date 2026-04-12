@@ -1456,7 +1456,7 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   });
 
   // ==========================================================================
-  // HALAMAN SUKSES (SETELAH PEMBAYARAN)
+  // HALAMAN SUKSES (SETELAH PEMBAYARAN) - TIDAK BISA DUPLIKAT SAAT REFRESH
   // ==========================================================================
   app.get('/payment-success/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
@@ -1464,65 +1464,320 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     if (!order) return res.status(404).send('Order tidak ditemukan');
     if (order.email !== req.user.email) return res.status(403).send('Akses ditolak');
     
-    // Jika panel belum dibuat, buat sekarang
-    if (!order.panel_created) {
-      try {
-        const createRes = await fetch(`${config.URL}/api/create-panel`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order_id: orderId })
-        });
-        const createData = await createRes.json();
-        if (!createData.success) {
-          return res.send(`<html><body><h2>Gagal membuat panel</h2><p>${createData.message}</p><a href="/profile">Kembali ke Profil</a></body></html>`);
-        }
-        order = await findOrderById(orderId);
-      } catch (err) {
-        console.error(err);
-        return res.send(`<html><body><h2>Error</h2><p>Hubungi admin. Order ID: ${orderId}</p><a href="/">Back</a></body></html>`);
-      }
+    // Jika panel sudah dibuat, langsung tampilkan halaman sukses (tanpa proses ulang)
+    if (order.panel_created) {
+      const panel = order.panel_data;
+      const userCred = order.user_data;
+      return res.send(generateSuccessPage(order, panel, userCred));
     }
     
-    const panel = order.panel_data;
-    const userCred = order.user_data;
+    // Cegah double submit saat refresh dengan session lock
+    if (req.session.processingOrder === orderId) {
+      return res.send(`<html><body><h2>⏳ Sedang memproses panel Anda...</h2><p>Halaman akan otomatis refresh dalam beberapa detik.</p><script>setTimeout(() => location.reload(), 3000);</script></body></html>`);
+    }
     
-    const successHtml = `<!DOCTYPE html>
+    // Set lock
+    req.session.processingOrder = orderId;
+    
+    try {
+      const createRes = await fetch(`${config.URL}/api/create-panel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+      });
+      const createData = await createRes.json();
+      // Hapus lock
+      delete req.session.processingOrder;
+      
+      if (!createData.success) {
+        return res.send(`<html><body><h2>❌ Gagal membuat panel</h2><p>${createData.message}</p><a href="/profile">Kembali ke Profil</a></body></html>`);
+      }
+      // Refresh order dari database
+      order = await findOrderById(orderId);
+      const panel = order.panel_data;
+      const userCred = order.user_data;
+      // Kirim halaman sukses
+      res.send(generateSuccessPage(order, panel, userCred));
+    } catch (err) {
+      console.error(err);
+      delete req.session.processingOrder;
+      return res.send(`<html><body><h2>⚠️ Terjadi kesalahan</h2><p>Hubungi admin. Order ID: ${orderId}</p><a href="/">Kembali</a></body></html>`);
+    }
+  });
+
+  // Fungsi untuk generate halaman sukses (dipisahkan agar tidak duplikasi kode)
+  function generateSuccessPage(order, panel, userCred) {
+    return `<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=0.70">
+<meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
 <title>Pembayaran Berhasil - ${SITE_NAME}</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);color:#fff;font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;}
-.container{max-width:650px;width:100%;background:rgba(15,25,45,0.6);backdrop-filter:blur(12px);border-radius:32px;padding:35px;border:1px solid rgba(91,140,255,0.4);box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);}
-h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:15px;font-size:32px;text-align:center;}
-.success-icon{text-align:center;font-size:70px;margin-bottom:10px;}
-.panel-card{background:rgba(0,0,0,0.5);border-radius:24px;padding:20px;margin:25px 0;}
-.detail-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+body{
+background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);
+color:#fff;
+font-family:'Rajdhani',sans-serif;
+min-height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+padding:20px;
+position:relative;
+overflow-x:hidden;
+}
+/* Background animasi bintang */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: url('https://cdn.pixabay.com/animation/2022/12/05/03/09/03-09-24-365_512.gif') no-repeat center center fixed;
+  background-size: cover;
+  opacity: 0.15;
+  z-index: -2;
+  pointer-events: none;
+}
+.container{
+max-width:650px;
+width:100%;
+background:rgba(15,25,45,0.6);
+backdrop-filter:blur(12px);
+border-radius:32px;
+padding:35px;
+border:1px solid rgba(91,140,255,0.4);
+box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);
+animation:fadeInUp 0.5s ease;
+}
+@keyframes fadeInUp{
+from{opacity:0;transform:translateY(30px)}
+to{opacity:1;transform:translateY(0)}
+}
+h1{
+font-family:'Orbitron';
+background:linear-gradient(135deg,#fff,#5b8cff);
+-webkit-background-clip:text;
+background-clip:text;
+color:transparent;
+margin-bottom:15px;
+font-size:32px;
+text-align:center;
+}
+.success-icon{
+text-align:center;
+font-size:70px;
+margin-bottom:10px;
+animation:pop 0.6s ease;
+}
+@keyframes pop{
+0%{transform:scale(0.3);opacity:0}
+70%{transform:scale(1.1)}
+100%{transform:scale(1);opacity:1}
+}
+.panel-card{
+background:rgba(0,0,0,0.5);
+border-radius:24px;
+padding:20px;
+margin:25px 0;
+backdrop-filter:blur(4px);
+border:1px solid rgba(91,140,255,0.3);
+transition:all 0.3s;
+}
+.panel-card:hover{
+transform:translateY(-5px);
+box-shadow:0 10px 25px rgba(91,140,255,0.3);
+}
+.detail-row{
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:12px 0;
+border-bottom:1px solid rgba(255,255,255,0.1);
+flex-wrap:wrap;
+gap:8px;
+}
 .detail-row:last-child{border-bottom:none}
-.detail-label{color:#8a9bb0;font-weight:600;}
-.copy-btn{background:#2a3a60;border:none;color:#fff;padding:4px 12px;border-radius:30px;cursor:pointer;}
-.btn-group{display:flex;gap:15px;justify-content:center;margin-top:25px;}
-.btn{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:12px 25px;border-radius:50px;text-decoration:none;font-weight:bold;}
-.refund-btn{background:linear-gradient(90deg,#d32f2f,#f44336);}
-.back-link{display:block;text-align:center;margin-top:20px;color:#8a9bb0;}
-.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;}
-.modal-content{background:#0b0f19;padding:30px;border-radius:28px;max-width:450px;text-align:center;}
-.modal-input-group{margin-bottom:20px;text-align:left;}
-.modal-input-group label{display:block;margin-bottom:6px;color:#8a9bb0;}
-.modal-input-group input,.modal-input-group textarea{width:100%;padding:10px 15px;border-radius:30px;border:1px solid #1f2a40;background:#1a1f30;color:#fff;}
-.modal-buttons{display:flex;gap:12px;margin-top:20px;}
-.modal-btn{flex:1;padding:12px;border-radius:40px;border:none;font-weight:bold;cursor:pointer;}
-.modal-btn.cancel{background:#2a3a60;color:#fff;}
-.modal-btn.confirm{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;}
+.detail-label{
+color:#8a9bb0;
+font-weight:600;
+font-size:14px;
+}
+.detail-value{
+font-family:'JetBrains Mono',monospace;
+font-size:14px;
+word-break:break-word;
+display:flex;
+align-items:center;
+gap:8px;
+flex-wrap:wrap;
+}
+.copy-btn{
+background:#2a3a60;
+border:none;
+color:#fff;
+padding:4px 12px;
+border-radius:30px;
+cursor:pointer;
+font-size:11px;
+transition:0.2s;
+}
+.copy-btn:hover{
+background:#5b8cff;
+color:#000;
+transform:scale(1.02);
+}
+.btn-group{
+display:flex;
+gap:15px;
+justify-content:center;
+margin-top:25px;
+flex-wrap:wrap;
+}
+.btn{
+display:inline-flex;
+align-items:center;
+gap:8px;
+background:linear-gradient(90deg,#1e3c72,#2a5298);
+color:#fff;
+padding:12px 25px;
+border-radius:50px;
+text-decoration:none;
+font-weight:bold;
+transition:0.2s;
+}
+.btn:hover{
+transform:translateY(-2px);
+box-shadow:0 0 20px rgba(91,140,255,0.5);
+}
+.refund-btn{
+background:linear-gradient(90deg,#d32f2f,#f44336);
+}
+.refund-btn:hover{
+box-shadow:0 0 20px #f44336;
+}
+.back-link{
+display:block;
+text-align:center;
+margin-top:20px;
+color:#8a9bb0;
+text-decoration:none;
+transition:0.2s;
+}
+.back-link:hover{color:#5b8cff}
+.modal{
+display:none;
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.85);
+backdrop-filter:blur(8px);
+z-index:2000;
+align-items:center;
+justify-content:center;
+}
+.modal-content{
+background:#0b0f19;
+padding:30px;
+border-radius:28px;
+max-width:450px;
+width:90%;
+text-align:center;
+border:2px solid #5b8cff;
+box-shadow:0 0 40px rgba(91,140,255,0.4);
+animation:fadeInUp 0.3s;
+}
+.modal h2{
+font-family:'Orbitron';
+color:#5b8cff;
+margin-bottom:20px;
+font-size:1.5rem;
+}
+.modal-input-group{
+margin-bottom:20px;
+text-align:left;
+}
+.modal-input-group label{
+display:block;
+margin-bottom:6px;
+color:#8a9bb0;
+font-size:13px;
+}
+.modal-input-group input,.modal-input-group textarea{
+width:100%;
+padding:10px 15px;
+border-radius:30px;
+border:1px solid #1f2a40;
+background:#1a1f30;
+color:#fff;
+font-size:14px;
+}
+.modal-input-group textarea{
+min-height:80px;
+resize:vertical;
+}
+.modal-buttons{
+display:flex;
+gap:12px;
+margin-top:20px;
+}
+.modal-btn{
+flex:1;
+padding:12px;
+border-radius:40px;
+border:none;
+font-weight:bold;
+cursor:pointer;
+transition:0.2s;
+}
+.modal-btn.cancel{
+background:#2a3a60;
+color:#fff;
+}
+.modal-btn.confirm{
+background:linear-gradient(90deg,#1e3c72,#2a5298);
+color:#fff;
+}
+.toast{
+position:fixed;
+bottom:90px;
+left:50%;
+transform:translateX(-50%) translateY(20px);
+background:#2a3a60;
+border-radius:40px;
+padding:8px 18px;
+font-family:'JetBrains Mono',monospace;
+font-size:12px;
+color:#fff;
+z-index:3000;
+opacity:0;
+transition:all 0.3s;
+pointer-events:none;
+white-space:nowrap;
+}
+.toast.show{
+opacity:1;
+transform:translateX(-50%) translateY(0);
+}
+@media(max-width:550px){
+.container{padding:20px}
+h1{font-size:24px}
+.detail-row{flex-direction:column;align-items:flex-start}
+.detail-value{text-align:left}
+.toast{white-space:normal;width:80%;text-align:center}
+}
 </style>
 </head>
 <body>
 <div class="container">
-<div class="success-icon">✅</div>
+<div class="success-icon">🎉</div>
 <h1>Pembayaran Berhasil!</h1>
 <p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
 <div class="panel-card">
@@ -1549,8 +1804,16 @@ h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webki
 <div class="modal-buttons"><button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button><button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button></div>
 </div>
 </div>
+<div id="toast" class="toast">✅ Teks disalin!</div>
 <script>
-let currentOrderId = null;
+// Konfeti otomatis
+canvasConfetti({ particleCount: 200, spread: 100, origin: { y: 0.6 }, startVelocity: 25, colors: ['#5b8cff', '#ffcc00', '#ff4444', '#4caf50'] });
+setTimeout(() => {
+  canvasConfetti({ particleCount: 100, angle: 60, spread: 55, origin: { x: 0 } });
+  canvasConfetti({ particleCount: 100, angle: 120, spread: 55, origin: { x: 1 } });
+}, 200);
+
+let currentOrderId = '${order.order_id}';
 function openRefundModal(orderId){currentOrderId=orderId;document.getElementById('refundModal').style.display='flex';}
 function closeRefundModal(){document.getElementById('refundModal').style.display='none';}
 document.getElementById('submitRefundBtn').addEventListener('click',async function(){
@@ -1564,7 +1827,19 @@ if(data.success) alert('Permintaan refund telah dikirim.');
 else alert('Gagal: '+data.message);
 closeRefundModal();
 });
-document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.getAttribute('data-copy'));alert('Tersalin!');});});
+document.querySelectorAll('.copy-btn').forEach(btn=>{
+btn.addEventListener('click',()=>{
+const text=btn.getAttribute('data-copy');
+navigator.clipboard.writeText(text);
+const toast=document.getElementById('toast');
+toast.classList.add('show');
+setTimeout(()=>toast.classList.remove('show'),1500);
+});
+});
+// Cegah duplikasi dengan sessionStorage (lapisan kedua)
+if(sessionStorage.getItem('panel_created_${order.order_id}') !== 'true') {
+  sessionStorage.setItem('panel_created_${order.order_id}', 'true');
+}
 </script>
 </body>
 </html>`;
