@@ -1062,16 +1062,44 @@ Crawl-delay: 1
     try {
       const { order_id } = req.body;
       if (!order_id) return res.status(400).json({ success: false, message: 'Order ID diperlukan' });
-      const order = await findOrderById(order_id);
+      
+      console.log(`[CreatePanel] 🔍 Memproses order ${order_id}`);
+      let order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      if (order.panel_created) return res.status(400).json({ success: false, message: 'Panel sudah dibuat sebelumnya' });
-      if (order.status !== 'paid') return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil' });
+      
+      if (order.panel_created) {
+        return res.json({ success: true, message: 'Panel sudah pernah dibuat', panel: order.panel_data, user: order.user_data });
+      }
+      
+      // Pastikan status paid, jika masih pending, cek ulang ke statusUrl
+      if (order.status !== 'paid') {
+        console.log(`[CreatePanel] Order status masih ${order.status}, mencoba refresh dari API...`);
+        if (order.statusUrl) {
+          try {
+            const statusRes = await fetch(order.statusUrl);
+            const statusData = await statusRes.json();
+            if (statusData.paid === true) {
+              await updateOrder(order_id, { status: 'paid' });
+              order = await findOrderById(order_id);
+              console.log(`[CreatePanel] Order ${order_id} status diupdate menjadi paid`);
+            } else {
+              return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil (status masih pending)' });
+            }
+          } catch (err) {
+            console.error(`[CreatePanel] Gagal refresh status:`, err);
+            return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil, coba lagi nanti' });
+          }
+        } else {
+          return res.status(400).json({ success: false, message: 'Pembayaran belum berhasil' });
+        }
+      }
       
       const username = order.email.split('@')[0];
       const randomPassword = generateRandomPassword(8);
       const user = await findUserByEmail(order.email);
       let pterodactylUserId = null;
       let userResult = null;
+      
       const existingUser = await findPterodactylUserByEmail(order.email);
       if (existingUser.success) {
         pterodactylUserId = existingUser.userId;
@@ -1079,16 +1107,36 @@ Crawl-delay: 1
         if (user && user.pterodactylUserId !== pterodactylUserId) await updateUser(user.id, { pterodactylUserId });
       } else {
         userResult = await createPterodactylUser(order.email, username, randomPassword);
-        if (!userResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat user di panel' });
+        if (!userResult.success) {
+          console.error(`[CreatePanel] Gagal membuat user Pterodactyl:`, userResult);
+          return res.status(500).json({ success: false, message: 'Gagal membuat user di panel hosting' });
+        }
         pterodactylUserId = userResult.userId;
         if (user) await updateUser(user.id, { pterodactylUserId });
       }
+      
       const panelResult = await createPterodactylServer(userResult.userId, order.panel_type, username, order.email);
-      if (!panelResult.success) return res.status(500).json({ success: false, message: 'Gagal membuat server' });
-      await updateOrder(order_id, { panel_created: true, status: 'paid', panel_data: panelResult, user_data: { email: order.email, username: username, password: randomPassword } });
+      if (!panelResult.success) {
+        console.error(`[CreatePanel] Gagal membuat server:`, panelResult);
+        return res.status(500).json({ success: false, message: 'Gagal membuat server di panel hosting' });
+      }
+      
+      await updateOrder(order_id, {
+        panel_created: true,
+        panel_data: panelResult,
+        user_data: { email: order.email, username: username, password: randomPassword }
+      });
+      
       if (user) {
         const purchased = user.purchasedPanels || [];
-        purchased.push({ order_id: order_id, panel_type: order.panel_type, panel_url: panelResult.panelUrl, username: username, password: randomPassword, created_at: new Date().toISOString() });
+        purchased.push({
+          order_id: order_id,
+          panel_type: order.panel_type,
+          panel_url: panelResult.panelUrl,
+          username: username,
+          password: randomPassword,
+          created_at: new Date().toISOString()
+        });
         await updateUser(user.id, { purchasedPanels: purchased });
       }
       
@@ -1125,34 +1173,27 @@ Crawl-delay: 1
       
       res.json({ success: true, panel: panelResult, user: { email: order.email, username: username, password: randomPassword }, message: 'Panel berhasil dibuat!' });
     } catch (error) {
-      console.error('Create panel error:', error);
+      console.error('[CreatePanel] Unhandled error:', error);
       await sendTelegramError(error, { route: '/api/create-panel', body: req.body });
       res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
   });
 
   // ==========================================================================
-  // HALAMAN PEMBAYARAN - VIDEO BACKGROUND DENGAN SUARA
+  // HALAMAN PEMBAYARAN - VIDEO BACKGROUND + SPINNER + JAM
   // ==========================================================================
   app.get('/payment/:orderId', isAuthenticated, async (req, res) => {
     const orderId = req.params.orderId;
     const order = await findOrderById(orderId);
-    if (!order) {
-      return res.status(404).send('Order tidak ditemukan');
-    }
-    if (order.email !== req.user.email) {
-      return res.status(403).send('Akses ditolak');
-    }
-    if (order.panel_created) {
-      return res.redirect('/profile');
-    }
+    if (!order) return res.status(404).send('Order tidak ditemukan');
+    if (order.email !== req.user.email) return res.status(403).send('Akses ditolak');
+    if (order.panel_created) return res.redirect(`/payment-success/${orderId}`);
+    
     const expiredTime = new Date(order.expired_time).getTime();
     const now = Date.now();
     let expired = false;
     let remainingSeconds = Math.floor((expiredTime - now) / 1000);
-    if (remainingSeconds <= 0) {
-      expired = true;
-    }
+    if (remainingSeconds <= 0) expired = true;
     
     const panelSpecs = {
       '1gb': { ram: '1 GB', disk: '1 GB', cpu: '40%' },
@@ -1169,13 +1210,12 @@ Crawl-delay: 1
     };
     const specs = panelSpecs[order.panel_type] || { ram: '-', disk: '-', cpu: '-' };
     
-    const html = `
-<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=0.70, user-scalable=yes">
-<title>Pembayaran - ${SITE_NAME} Panel</title>
+<title>Pembayaran - ${SITE_NAME}</title>
 <link rel="icon" type="image/jpeg" href="${config.FAVICON}">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
@@ -1192,7 +1232,6 @@ padding:20px;
 position:relative;
 overflow-x:hidden;
 }
-/* Video Background */
 #bgVideo {
   position: fixed;
   top: 0;
@@ -1203,7 +1242,6 @@ overflow-x:hidden;
   z-index: -2;
   pointer-events: none;
 }
-/* Overlay gelap agar teks mudah dibaca */
 body::after {
   content: '';
   position: fixed;
@@ -1230,269 +1268,56 @@ animation:fadeInUp 0.5s ease;
 from{opacity:0;transform:translateY(30px)}
 to{opacity:1;transform:translateY(0)}
 }
-.logo-payment{
-text-align:center;
-margin-bottom:20px;
-}
-.logo-payment img{
-height:84px;
-width:auto;
-border-radius:12px;
-transition: transform 0.3s ease;
-}
-.logo-payment img:hover{
-transform: scale(1.02);
-}
-h1{
-font-family:'Orbitron';
-background:linear-gradient(135deg,#fff,#5b8cff);
--webkit-background-clip:text;
-background-clip:text;
-color:transparent;
-margin-bottom:10px;
-font-size:26px;
-text-align:center;
-}
-.top-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-.top-actions a {
-  color: #5b8cff;
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: bold;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(0,0,0,0.3);
-  padding: 6px 14px;
-  border-radius: 40px;
-  transition: 0.3s;
-}
-.top-actions a:hover {
-  background: #5b8cff;
-  color: #000;
-  transform: translateY(-2px);
-}
-/* QR Container */
-.qr-wrapper {
-  display: flex;
-  justify-content: center;
-  margin: 15px 0;
-}
-.qr-container{
-background: rgba(255, 255, 255, 0.1);
-backdrop-filter: blur(8px);
-border-radius: 24px;
-padding: 20px;
-display: inline-block;
-text-align: center;
-box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-border: 1px solid rgba(91,140,255,0.3);
-transition: all 0.3s ease;
-}
-.qr-container:hover {
-  box-shadow: 0 0 25px rgba(91,140,255,0.5);
-  border-color: #5b8cff;
-}
-.qr-img{
-width:250px;
-height:250px;
-object-fit:contain;
-border-radius: 16px;
-transition: transform 0.2s;
-}
-.qr-img:hover{
-transform: scale(1.02);
-}
-.payment-info {
-  background: rgba(0,0,0,0.4);
-  border-radius: 20px;
-  padding: 12px 16px;
-  margin: 10px 0 20px;
-  font-size: 13px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-.payment-info .left {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.payment-info .item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.payment-info .item .label {
-  color: #8a9bb0;
-  font-weight: 600;
-}
-.payment-info .item .value {
-  color: #fff;
-  font-weight: 500;
-}
-.datetime-info {
-  font-size: 12px;
-  background: rgba(0,0,0,0.3);
-  padding: 6px 12px;
-  border-radius: 40px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: monospace;
-}
-.datetime-info i {
-  color: #5b8cff;
-}
-.countdown-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(0,0,0,0.5);
-  padding: 4px 12px;
-  border-radius: 40px;
-}
-.countdown-badge {
-  font-family: monospace;
-  font-size: 22px;
-  font-weight: bold;
-  letter-spacing: 2px;
-}
-.countdown-badge.high { color: #4caf50; text-shadow: 0 0 5px #4caf50; }
-.countdown-badge.medium { color: #ffcc00; text-shadow: 0 0 5px #ffcc00; }
-.countdown-badge.low { color: #ff4444; text-shadow: 0 0 5px #ff4444; }
-.spinner-clock {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #5b8cff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  display: inline-block;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.status-badge{
-display:inline-block;
-padding:8px 20px;
-border-radius:40px;
-font-weight:bold;
-margin:15px 0;
-transition: all 0.3s;
-}
-.status-pending{
-background:#ff9800;
-color:#000;
-}
-.status-paid{
-background:#4caf50;
-color:#fff;
-}
-.expired-text{
-color:#ff4444;
-font-weight:bold;
-}
-.btn-group{
-display:flex;
-gap:15px;
-justify-content:center;
-margin-top:20px;
-flex-wrap:wrap;
-}
-.btn{
-display:inline-flex;
-align-items:center;
-gap:8px;
-background:linear-gradient(90deg,#1e3c72,#2a5298);
-color:#fff;
-padding:10px 20px;
-border-radius:50px;
-text-decoration:none;
-font-weight:bold;
-transition:0.3s;
-border:none;
-cursor:pointer;
-}
-.btn:hover{
-transform:translateY(-2px);
-box-shadow:0 0 20px rgba(91,140,255,0.5);
-}
-.btn-outline{
-background:transparent;
-border:1px solid #5b8cff;
-color:#5b8cff;
-}
-.btn-outline:hover{
-background:#5b8cff;
-color:#000;
-}
-.footer{
-font-size:12px;
-color:#8a9bb0;
-margin-top:20px;
-text-align:center;
-}
-.loader{
-display:inline-block;
-width:20px;
-height:20px;
-border:2px solid #fff;
-border-top-color:#5b8cff;
-border-radius:50%;
-animation:spin 0.8s linear infinite;
-}
-.warning{
-color:#ffaa00;
-font-size:13px;
-margin-top:10px;
-}
-.unmute-btn {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 1000;
-  background: #2a3a60;
-  border: none;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 40px;
-  cursor: pointer;
-  font-size: 12px;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  backdrop-filter: blur(4px);
-}
-.unmute-btn.show {
-  display: flex;
-}
+.logo-payment{text-align:center;margin-bottom:20px;}
+.logo-payment img{height:84px;width:auto;border-radius:12px;transition:transform 0.3s;}
+.logo-payment img:hover{transform:scale(1.02);}
+h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:10px;font-size:26px;text-align:center;}
+.top-actions{display:flex;justify-content:flex-end;gap:15px;margin-bottom:15px;}
+.top-actions a{color:#5b8cff;text-decoration:none;font-size:14px;font-weight:bold;display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,0.3);padding:6px 14px;border-radius:40px;transition:0.3s;}
+.top-actions a:hover{background:#5b8cff;color:#000;transform:translateY(-2px);}
+.qr-wrapper{display:flex;justify-content:center;margin:15px 0;}
+.qr-container{background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border-radius:24px;padding:20px;display:inline-block;text-align:center;box-shadow:0 8px 20px rgba(0,0,0,0.3);border:1px solid rgba(91,140,255,0.3);transition:all 0.3s;}
+.qr-container:hover{box-shadow:0 0 25px rgba(91,140,255,0.5);border-color:#5b8cff;}
+.qr-img{width:250px;height:250px;object-fit:contain;border-radius:16px;transition:transform 0.2s;}
+.qr-img:hover{transform:scale(1.02);}
+.payment-info{background:rgba(0,0,0,0.4);border-radius:20px;padding:12px 16px;margin:10px 0 20px;font-size:13px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;}
+.payment-info .left{display:flex;flex-wrap:wrap;gap:12px;}
+.payment-info .item{display:flex;align-items:baseline;gap:6px;}
+.payment-info .item .label{color:#8a9bb0;font-weight:600;}
+.payment-info .item .value{color:#fff;font-weight:500;}
+.datetime-info{font-size:12px;background:rgba(0,0,0,0.3);padding:6px 12px;border-radius:40px;display:inline-flex;align-items:center;gap:8px;font-family:monospace;}
+.datetime-info i{color:#5b8cff;}
+.countdown-wrapper{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,0.5);padding:4px 12px;border-radius:40px;}
+.countdown-badge{font-family:monospace;font-size:22px;font-weight:bold;letter-spacing:2px;}
+.countdown-badge.high{color:#4caf50;text-shadow:0 0 5px #4caf50;}
+.countdown-badge.medium{color:#ffcc00;text-shadow:0 0 5px #ffcc00;}
+.countdown-badge.low{color:#ff4444;text-shadow:0 0 5px #ff4444;}
+.spinner-clock{width:20px;height:20px;border:2px solid rgba(255,255,255,0.3);border-top-color:#5b8cff;border-radius:50%;animation:spin 1s linear infinite;display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status-badge{display:inline-block;padding:8px 20px;border-radius:40px;font-weight:bold;margin:15px 0;transition:all 0.3s;}
+.status-pending{background:#ff9800;color:#000;}
+.status-paid{background:#4caf50;color:#fff;}
+.expired-text{color:#ff4444;font-weight:bold;}
+.btn-group{display:flex;gap:15px;justify-content:center;margin-top:20px;flex-wrap:wrap;}
+.btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:10px 20px;border-radius:50px;text-decoration:none;font-weight:bold;transition:0.3s;border:none;cursor:pointer;}
+.btn:hover{transform:translateY(-2px);box-shadow:0 0 20px rgba(91,140,255,0.5);}
+.btn-outline{background:transparent;border:1px solid #5b8cff;color:#5b8cff;}
+.btn-outline:hover{background:#5b8cff;color:#000;}
+.footer{font-size:12px;color:#8a9bb0;margin-top:20px;text-align:center;}
+.loader{display:inline-block;width:20px;height:20px;border:2px solid #fff;border-top-color:#5b8cff;border-radius:50%;animation:spin 0.8s linear infinite;}
+.warning{color:#ffaa00;font-size:13px;margin-top:10px;}
+.unmute-btn{position:fixed;bottom:20px;right:20px;z-index:1000;background:#2a3a60;border:none;color:#fff;padding:8px 16px;border-radius:40px;cursor:pointer;font-size:12px;display:none;align-items:center;gap:8px;backdrop-filter:blur(4px);}
+.unmute-btn.show{display:flex;}
 </style>
 </head>
 <body>
 <video id="bgVideo" src="https://litter.catbox.moe/yfymi2.mp4" autoplay loop playsinline muted></video>
 <button id="unmuteBtn" class="unmute-btn"><i class="fas fa-volume-up"></i> Aktifkan Suara</button>
 <div class="container">
-<div class="top-actions">
-<a href="/"><i class="fas fa-home"></i> Beranda</a>
-<a href="/profile"><i class="fas fa-user"></i> Profil</a>
-</div>
-<div class="logo-payment">
-<img src="https://files.catbox.moe/u47x3d.png" alt="${SITE_NAME}">
-</div>
+<div class="top-actions"><a href="/"><i class="fas fa-home"></i> Beranda</a><a href="/profile"><i class="fas fa-user"></i> Profil</a></div>
+<div class="logo-payment"><img src="https://files.catbox.moe/u47x3d.png" alt="${SITE_NAME}"></div>
 <h1><i class="fas fa-qrcode"></i> Scan QRIS</h1>
-<div class="qr-wrapper">
-<div class="qr-container">
-<img src="${order.qrImage}" class="qr-img" alt="QR Code" id="qrImage">
-</div>
-</div>
+<div class="qr-wrapper"><div class="qr-container"><img src="${order.qrImage}" class="qr-img" id="qrImage"></div></div>
 <div class="payment-info">
 <div class="left">
 <div class="item"><span class="label">📦</span><span class="value">${order.panel_type.toUpperCase()}</span></div>
@@ -1503,25 +1328,13 @@ margin-top:10px;
 <div class="item"><span class="label">📧</span><span class="value" style="max-width:150px; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(order.email)}</span></div>
 </div>
 <div style="display: flex; gap: 12px; align-items: center;">
-<div class="datetime-info" id="datetimeInfo">
-<i class="fas fa-calendar-alt"></i> <span id="currentDate">--</span> <i class="fas fa-clock"></i> <span id="currentTime">--:--:--</span>
-</div>
-<div class="countdown-wrapper">
-<div class="spinner-clock"></div>
-<div class="countdown-badge" id="countdownBadge">--:--</div>
+<div class="datetime-info" id="datetimeInfo"><i class="fas fa-calendar-alt"></i> <span id="currentDate">--</span> <i class="fas fa-clock"></i> <span id="currentTime">--:--:--</span></div>
+<div class="countdown-wrapper"><div class="spinner-clock"></div><div class="countdown-badge" id="countdownBadge">--:--</div></div>
 </div>
 </div>
-</div>
-<div id="statusArea" style="text-align:center;">
-<span class="status-badge status-pending" id="statusText">⏳ Menunggu Pembayaran</span>
-</div>
-<div class="btn-group">
-<button class="btn" id="downloadQrBtn"><i class="fas fa-download"></i> Download QR</button>
-<button class="btn" id="checkManualBtn"><i class="fas fa-sync-alt"></i> Cek Status Manual</button>
-</div>
-<div class="warning">
-⚠️ QR Code berlaku selama 5 menit. Jika expired, silakan buat order baru.
-</div>
+<div id="statusArea" style="text-align:center;"><span class="status-badge status-pending" id="statusText">⏳ Menunggu Pembayaran</span></div>
+<div class="btn-group"><button class="btn" id="downloadQrBtn"><i class="fas fa-download"></i> Download QR</button><button class="btn" id="checkManualBtn"><i class="fas fa-sync-alt"></i> Cek Status Manual</button></div>
+<div class="warning">⚠️ QR Code berlaku selama 5 menit. Jika expired, silakan buat order baru.</div>
 <div class="footer">Pembayaran akan dikonfirmasi otomatis dalam beberapa detik setelah transfer.</div>
 </div>
 <script>
@@ -1529,7 +1342,6 @@ const orderId = "${orderId}";
 let pollingInterval = null;
 let expired = ${expired};
 let remainingSeconds = ${remainingSeconds};
-
 const countdownBadge = document.getElementById('countdownBadge');
 const statusTextEl = document.getElementById('statusText');
 const currentDateSpan = document.getElementById('currentDate');
@@ -1537,37 +1349,22 @@ const currentTimeSpan = document.getElementById('currentTime');
 const bgVideo = document.getElementById('bgVideo');
 const unmuteBtn = document.getElementById('unmuteBtn');
 
-// Fungsi update tanggal dan jam (Asia/Jakarta)
 function updateDateTime() {
   const now = new Date();
-  const optionsDate = { 
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' 
-  };
-  const optionsTime = { 
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' 
-  };
-  const dateStr = now.toLocaleDateString('id-ID', optionsDate);
-  const timeStr = now.toLocaleTimeString('id-ID', optionsTime);
-  currentDateSpan.innerText = dateStr;
-  currentTimeSpan.innerText = timeStr;
+  const optionsDate = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' };
+  const optionsTime = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' };
+  currentDateSpan.innerText = now.toLocaleDateString('id-ID', optionsDate);
+  currentTimeSpan.innerText = now.toLocaleTimeString('id-ID', optionsTime);
 }
 updateDateTime();
 setInterval(updateDateTime, 1000);
 
-// Menangani autoplay video dengan suara
 if (bgVideo) {
-  // Coba putar dengan suara (mungkin gagal)
   bgVideo.muted = false;
-  bgVideo.play().catch(e => {
-    console.log('Autoplay with sound blocked, showing unmute button');
-    unmuteBtn.classList.add('show');
-  });
-  // Jika video berhenti karena kebijakan browser, user bisa klik tombol
+  bgVideo.play().catch(e => { unmuteBtn.classList.add('show'); });
   unmuteBtn.addEventListener('click', () => {
     bgVideo.muted = false;
-    bgVideo.play().then(() => {
-      unmuteBtn.classList.remove('show');
-    }).catch(err => console.log('Still cannot play:', err));
+    bgVideo.play().then(() => unmuteBtn.classList.remove('show')).catch(err => console.log('Still cannot play:', err));
   });
 }
 
@@ -1593,106 +1390,46 @@ function updateCountdownDisplay() {
   }
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
-  const timeStr = \`\${minutes.toString().padStart(2,'0')}:\${seconds.toString().padStart(2,'0')}\`;
-  countdownBadge.innerText = timeStr;
-  if (remainingSeconds > 120) {
-    countdownBadge.className = 'countdown-badge high';
-  } else if (remainingSeconds > 60) {
-    countdownBadge.className = 'countdown-badge medium';
-  } else {
-    countdownBadge.className = 'countdown-badge low';
-  }
+  countdownBadge.innerText = \`\${minutes.toString().padStart(2,'0')}:\${seconds.toString().padStart(2,'0')}\`;
+  if (remainingSeconds > 120) countdownBadge.className = 'countdown-badge high';
+  else if (remainingSeconds > 60) countdownBadge.className = 'countdown-badge medium';
+  else countdownBadge.className = 'countdown-badge low';
   remainingSeconds--;
 }
-
-const countdownInterval = setInterval(() => {
-  if (!expired) {
-    if (remainingSeconds <= 0) {
-      expired = true;
-      updateCountdownDisplay();
-      if (pollingInterval) clearInterval(pollingInterval);
-    } else {
-      updateCountdownDisplay();
-    }
-  } else {
-    clearInterval(countdownInterval);
-  }
+setInterval(() => {
+  if (!expired && remainingSeconds > 0) updateCountdownDisplay();
+  else if (!expired && remainingSeconds <= 0) { expired = true; updateCountdownDisplay(); }
 }, 1000);
 updateCountdownDisplay();
 
 async function checkPaymentStatus(isManual = false) {
-  if (isManual) {
-    statusTextEl.innerHTML = '<span class="loader"></span> Mengecek...';
-  }
+  if (isManual) statusTextEl.innerHTML = '<span class="loader"></span> Mengecek...';
   try {
     const response = await fetch('/api/check-payment-status/' + orderId);
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || \`HTTP \${response.status}\`);
-    }
+    if (!response.ok) throw new Error('HTTP ' + response.status);
     const data = await response.json();
-    console.log('[CheckStatus] Response:', data);
-    
     if (data.paid === true) {
       if (pollingInterval) clearInterval(pollingInterval);
-      clearInterval(countdownInterval);
-      statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Sedang membuat panel...';
-      statusTextEl.classList.remove('status-pending');
-      statusTextEl.classList.add('status-paid');
-      
-      const createRes = await fetch('/api/create-panel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId })
-      });
-      const createData = await createRes.json();
-      if (createData.success) {
-        window.location.href = '/profile?payment_success=' + orderId;
-      } else {
-        alert('Panel gagal dibuat: ' + (createData.message || 'Unknown error'));
-        window.location.href = '/profile';
-      }
+      statusTextEl.innerHTML = '✅ Pembayaran Berhasil! Mengalihkan...';
+      window.location.href = '/payment-success/' + orderId;
       return true;
-    } else if (data.status === 'pending' || data.paid === false) {
+    } else {
       if (isManual) {
-        statusTextEl.innerHTML = '⏳ Pembayaran masih pending. Silakan tunggu atau cek lagi nanti.';
-        setTimeout(() => {
-          if (statusTextEl.innerHTML === '⏳ Pembayaran masih pending. Silakan tunggu atau cek lagi nanti.') {
-            statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
-          }
-        }, 3000);
+        statusTextEl.innerHTML = '⏳ Pembayaran masih pending.';
+        setTimeout(() => statusTextEl.innerHTML = '⏳ Menunggu Pembayaran', 3000);
       } else {
         statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
       }
       return false;
-    } else {
-      throw new Error('Respons tidak dikenal: ' + JSON.stringify(data));
     }
   } catch (err) {
-    console.error('Check status error:', err);
-    if (isManual) {
-      statusTextEl.innerHTML = '⚠️ Gagal mengecek status: ' + err.message + '. Coba lagi nanti.';
-      setTimeout(() => {
-        if (statusTextEl.innerHTML.includes('Gagal mengecek status')) {
-          statusTextEl.innerHTML = '⏳ Menunggu Pembayaran';
-        }
-      }, 5000);
-    } else {
-      console.error('Polling error:', err.message);
-    }
+    console.error(err);
+    if (isManual) statusTextEl.innerHTML = '⚠️ Gagal mengecek status. Coba lagi.';
     return false;
   }
 }
-
-function startPolling() {
-  pollingInterval = setInterval(() => checkPaymentStatus(false), 5000);
-}
-startPolling();
-
-document.getElementById('checkManualBtn').addEventListener('click', () => {
-  checkPaymentStatus(true);
-});
-
+pollingInterval = setInterval(() => checkPaymentStatus(false), 5000);
+document.getElementById('checkManualBtn').addEventListener('click', () => checkPaymentStatus(true));
 document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   try {
     const response = await fetch('/api/download-qr/' + orderId);
@@ -1707,21 +1444,135 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    console.error('Download error:', err);
-    const qrUrl = document.getElementById('qrImage').src;
-    window.open(qrUrl, '_blank');
-    alert('Gagal download otomatis, gambar dibuka di tab baru. Klik kanan dan pilih "Simpan gambar sebagai"');
+    console.error(err);
+    window.open(document.getElementById('qrImage').src, '_blank');
+    alert('Gagal download otomatis, gambar dibuka di tab baru. Klik kanan -> Simpan gambar sebagai');
   }
 });
 </script>
 </body>
-</html>
-`;
+</html>`;
     res.send(html);
   });
 
   // ==========================================================================
-  // PROXY ENDPOINT UNTUK CEK STATUS PEMBAYARAN (MENGHINDARI CORS)
+  // HALAMAN SUKSES (SETELAH PEMBAYARAN)
+  // ==========================================================================
+  app.get('/payment-success/:orderId', isAuthenticated, async (req, res) => {
+    const orderId = req.params.orderId;
+    let order = await findOrderById(orderId);
+    if (!order) return res.status(404).send('Order tidak ditemukan');
+    if (order.email !== req.user.email) return res.status(403).send('Akses ditolak');
+    
+    // Jika panel belum dibuat, buat sekarang
+    if (!order.panel_created) {
+      try {
+        const createRes = await fetch(`${config.URL}/api/create-panel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId })
+        });
+        const createData = await createRes.json();
+        if (!createData.success) {
+          return res.send(`<html><body><h2>Gagal membuat panel</h2><p>${createData.message}</p><a href="/profile">Kembali ke Profil</a></body></html>`);
+        }
+        order = await findOrderById(orderId);
+      } catch (err) {
+        console.error(err);
+        return res.send(`<html><body><h2>Error</h2><p>Hubungi admin. Order ID: ${orderId}</p><a href="/">Back</a></body></html>`);
+      }
+    }
+    
+    const panel = order.panel_data;
+    const userCred = order.user_data;
+    
+    const successHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.70">
+<title>Pembayaran Berhasil - ${SITE_NAME}</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:radial-gradient(circle at 20% 30%, #0a0f1a, #03050a);color:#fff;font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;}
+.container{max-width:650px;width:100%;background:rgba(15,25,45,0.6);backdrop-filter:blur(12px);border-radius:32px;padding:35px;border:1px solid rgba(91,140,255,0.4);box-shadow:0 25px 45px rgba(0,0,0,0.5),0 0 30px rgba(91,140,255,0.2);}
+h1{font-family:'Orbitron';background:linear-gradient(135deg,#fff,#5b8cff);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:15px;font-size:32px;text-align:center;}
+.success-icon{text-align:center;font-size:70px;margin-bottom:10px;}
+.panel-card{background:rgba(0,0,0,0.5);border-radius:24px;padding:20px;margin:25px 0;}
+.detail-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+.detail-row:last-child{border-bottom:none}
+.detail-label{color:#8a9bb0;font-weight:600;}
+.copy-btn{background:#2a3a60;border:none;color:#fff;padding:4px 12px;border-radius:30px;cursor:pointer;}
+.btn-group{display:flex;gap:15px;justify-content:center;margin-top:25px;}
+.btn{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:12px 25px;border-radius:50px;text-decoration:none;font-weight:bold;}
+.refund-btn{background:linear-gradient(90deg,#d32f2f,#f44336);}
+.back-link{display:block;text-align:center;margin-top:20px;color:#8a9bb0;}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;}
+.modal-content{background:#0b0f19;padding:30px;border-radius:28px;max-width:450px;text-align:center;}
+.modal-input-group{margin-bottom:20px;text-align:left;}
+.modal-input-group label{display:block;margin-bottom:6px;color:#8a9bb0;}
+.modal-input-group input,.modal-input-group textarea{width:100%;padding:10px 15px;border-radius:30px;border:1px solid #1f2a40;background:#1a1f30;color:#fff;}
+.modal-buttons{display:flex;gap:12px;margin-top:20px;}
+.modal-btn{flex:1;padding:12px;border-radius:40px;border:none;font-weight:bold;cursor:pointer;}
+.modal-btn.cancel{background:#2a3a60;color:#fff;}
+.modal-btn.confirm{background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="success-icon">✅</div>
+<h1>Pembayaran Berhasil!</h1>
+<p style="text-align:center;color:#a0b0c0">Panel server Anda telah dibuat dan siap digunakan.</p>
+<div class="panel-card">
+<div class="detail-row"><span class="detail-label">👤 Username</span><div class="detail-value"><code>${escapeHTML(userCred.username)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.username)}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">🔑 Password</span><div class="detail-value"><code>${escapeHTML(userCred.password)}</code><button class="copy-btn" data-copy="${escapeHTML(userCred.password)}">Salin</button></div></div>
+<div class="detail-row"><span class="detail-label">📧 Email</span><div class="detail-value"><code>${escapeHTML(userCred.email)}</code></div></div>
+<div class="detail-row"><span class="detail-label">📦 Server</span><div class="detail-value">${escapeHTML(panel.name)}</div></div>
+<div class="detail-row"><span class="detail-label">💾 RAM</span><div class="detail-value">${panel.ram === 0 ? 'Unlimited' : panel.ram + ' MB'}</div></div>
+<div class="detail-row"><span class="detail-label">💿 Disk</span><div class="detail-value">${panel.disk === 0 ? 'Unlimited' : panel.disk + ' MB'}</div></div>
+<div class="detail-row"><span class="detail-label">⚙️ CPU</span><div class="detail-value">${panel.cpu === 0 ? 'Unlimited' : panel.cpu + '%'}</div></div>
+</div>
+<div class="btn-group">
+<a href="${panel.panelUrl}" class="btn" target="_blank"><i class="fas fa-external-link-alt"></i> Buka Panel</a>
+<button class="btn refund-btn" onclick="openRefundModal('${order.order_id}')"><i class="fas fa-undo-alt"></i> Minta Refund (20 Menit)</button>
+</div>
+<a href="/" class="back-link">← Kembali ke Beranda</a>
+</div>
+<div id="refundModal" class="modal">
+<div class="modal-content">
+<h2><i class="fas fa-undo-alt"></i> Form Pengajuan Refund</h2>
+<div class="modal-input-group"><label>Nomor Dana</label><input type="text" id="danaNumber" placeholder="Contoh: 081234567890"></div>
+<div class="modal-input-group"><label>Nama Akun Dana</label><input type="text" id="danaName" placeholder="Nama sesuai rekening Dana"></div>
+<div class="modal-input-group"><label>Alasan Refund (Opsional)</label><textarea id="refundReason" placeholder="Tulis alasan Anda..."></textarea></div>
+<div class="modal-buttons"><button class="modal-btn cancel" onclick="closeRefundModal()">Batal</button><button class="modal-btn confirm" id="submitRefundBtn">Ajukan Refund</button></div>
+</div>
+</div>
+<script>
+let currentOrderId = null;
+function openRefundModal(orderId){currentOrderId=orderId;document.getElementById('refundModal').style.display='flex';}
+function closeRefundModal(){document.getElementById('refundModal').style.display='none';}
+document.getElementById('submitRefundBtn').addEventListener('click',async function(){
+const danaNumber=document.getElementById('danaNumber').value.trim();
+const danaName=document.getElementById('danaName').value.trim();
+const reason=document.getElementById('refundReason').value.trim();
+if(!danaNumber||!danaName){alert('Nomor Dana dan Nama Akun Dana harus diisi!');return;}
+const res=await fetch('/api/refund-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:currentOrderId,dana_number:danaNumber,dana_name:danaName,reason:reason})});
+const data=await res.json();
+if(data.success) alert('Permintaan refund telah dikirim.');
+else alert('Gagal: '+data.message);
+closeRefundModal();
+});
+document.querySelectorAll('.copy-btn').forEach(btn=>{btn.addEventListener('click',()=>{navigator.clipboard.writeText(btn.getAttribute('data-copy'));alert('Tersalin!');});});
+</script>
+</body>
+</html>`;
+    res.send(successHtml);
+  });
+
+  // ==========================================================================
+  // PROXY ENDPOINT UNTUK CEK STATUS PEMBAYARAN
   // ==========================================================================
   app.get('/api/check-payment-status/:orderId', isAuthenticated, async (req, res) => {
     try {
@@ -1742,7 +1593,7 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   });
 
   // ==========================================================================
-  // PROXY ENDPOINT UNTUK DOWNLOAD QR (MENGHINDARI CORS)
+  // PROXY ENDPOINT UNTUK DOWNLOAD QR
   // ==========================================================================
   app.get('/api/download-qr/:orderId', isAuthenticated, async (req, res) => {
     try {
@@ -1765,7 +1616,7 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   });
 
   // ==========================================================================
-  // API REFUND ORDER
+  // API REFUND ORDER, APPROVE, CANCEL, STATUS, AVATAR
   // ==========================================================================
   app.post('/api/refund-order', isAuthenticated, async (req, res) => {
     try {
@@ -1804,9 +1655,6 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     }
   });
 
-  // ==========================================================================
-  // API APPROVE REFUND (ADMIN)
-  // ==========================================================================
   app.post('/api/approve-refund', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { order_id } = req.body;
@@ -1843,9 +1691,6 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     }
   });
 
-  // ==========================================================================
-  // API CANCEL ORDER (ADMIN) - HANYA UNTUK PENDING
-  // ==========================================================================
   app.post('/api/cancel-order', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { order_id } = req.body;
@@ -1853,7 +1698,6 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
       const order = await findOrderById(order_id);
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
       if (order.status !== 'pending') return res.status(400).json({ success: false, message: 'Hanya order pending yang dapat dibatalkan' });
-      
       const activeOrders = await getOrders();
       const newActive = activeOrders.filter(o => o.order_id !== order_id);
       await saveOrders(newActive);
@@ -1868,16 +1712,10 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
     }
   });
 
-  // ==========================================================================
-  // API STATUS
-  // ==========================================================================
   app.get('/api/status', (req, res) => {
     res.json({ status: 'ok', version: config.VERSI_WEB, developer: config.DEVELOPER, uptime: process.uptime(), timestamp: Date.now() });
   });
 
-  // ==========================================================================
-  // ROUTE AVATAR
-  // ==========================================================================
   app.get('/api/avatar/:userId', isAuthenticated, async (req, res) => {
     const { userId } = req.params;
     const currentUser = req.user;
@@ -1907,7 +1745,7 @@ document.getElementById('downloadQrBtn').addEventListener('click', async () => {
   });
 
   // ==========================================================================
-  // ROUTE LOGIN (GET & POST) - (sama seperti sebelumnya)
+  // ROUTE LOGIN (GET & POST) – LENGKAP
   // ==========================================================================
   app.get('/login', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
@@ -2035,7 +1873,7 @@ errorDiv.style.display = 'block';
   });
 
   // ==========================================================================
-  // ROUTE REGISTER (GET & POST) - (sama seperti sebelumnya, tidak diubah)
+  // ROUTE REGISTER (GET & POST) – LENGKAP
   // ==========================================================================
   app.get('/register', (req, res) => {
     if (req.isAuthenticated()) return res.redirect('/profile');
@@ -2268,7 +2106,7 @@ errorDiv.style.display = 'block';
   );
 
   // ==========================================================================
-  // ROUTE PROFILE (GET & POST) - (sama seperti sebelumnya)
+  // ROUTE PROFILE (GET & POST) – LENGKAP
   // ==========================================================================
   app.get('/profile', isAuthenticated, async (req, res) => {
     const user = req.user;
@@ -3141,7 +2979,7 @@ alert('Username yang dimasukkan tidak sesuai. Penghapusan dibatalkan.');
   });
 
   // ==========================================================================
-  // ADMIN DASHBOARD
+  // ADMIN DASHBOARD – LENGKAP
   // ==========================================================================
   app.get('/admin', isAuthenticated, isAdmin, async (req, res) => {
     const users = await getUsers();
@@ -3885,7 +3723,7 @@ alert('Terjadi kesalahan, coba lagi nanti.');
   });
 
   // ==========================================================================
-  // HALAMAN UTAMA (HOME)
+  // HALAMAN UTAMA (HOME) – LENGKAP
   // ==========================================================================
   app.get('/', async (req, res) => {
     const isLoggedIn = req.isAuthenticated();
