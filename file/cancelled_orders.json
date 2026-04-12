@@ -302,5 +302,21 @@
     "expired": "5 minutes",
     "expired_time": "2026-04-11T21:52:35.866Z",
     "cancelled_at": "2026-04-11T21:53:38.170Z"
+  },
+  {
+    "order_id": "ORDER_1775959837553_NR8985RMA",
+    "email": "nova@gmail.com",
+    "panel_type": "1gb",
+    "amount": 100,
+    "status": "cancel",
+    "created_at": "2026-04-12T02:10:41.470Z",
+    "panel_created": false,
+    "payment_reference": "QR-15-1775959838",
+    "qrImage": "https://claidexpayment.host/qr/QR-15-1775959838.png",
+    "payUrl": "https://claidexpayment.host/pay.php?ref=QR-15-1775959838",
+    "statusUrl": "https://claidexpayment.host/check-status.php?ref=QR-15-1775959838",
+    "expired": "5 minutes",
+    "expired_time": "2026-04-12T02:15:41.470Z",
+    "cancelled_at": "2026-04-12T02:28:44.267Z"
   }
 ]
