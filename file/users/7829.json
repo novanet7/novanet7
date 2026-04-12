@@ -7,6 +7,15 @@
   "photo": "avatars/7829/avatar.jpeg",
   "googleId": "105277321131206133402",
   "createdAt": "2026-04-11T18:10:34.532Z",
-  "purchasedPanels": [],
+  "purchasedPanels": [
+    {
+      "order_id": "ORDER_1775990574120_SJEXI5XQ6",
+      "panel_type": "1gb",
+      "panel_url": "https://novanet.go.wibusoft.my.id",
+      "username": "novanet403",
+      "password": "WL6LbBQq",
+      "created_at": "2026-04-12T11:02:18.963Z"
+    }
+  ],
   "pterodactylUserId": 4
 }
